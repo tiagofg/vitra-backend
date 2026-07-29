@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: vitra-db
+    environment:
+      POSTGRES_USER: vitra
+      POSTGRES_PASSWORD: vitra
+      POSTGRES_DB: vitra
+    ports:
+      - "5433:5432"
+    volumes:
+      - vitra-db-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitra -d vitra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vitra-db-data:
