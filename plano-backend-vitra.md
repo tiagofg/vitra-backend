@@ -583,6 +583,86 @@ importação, ecossistema de IA.
 `substituir_conjunto`, e "listagem server-side" é o `ListParams`. O trabalho real da FB é o RLS
 — e é justamente onde as três stacks vão divergir mais.
 
+## FastAPI × Litestar — o que de fato difere
+
+Duas das três stacks do bake-off são Python. Vale saber onde elas realmente divergem, para não
+medir a coisa errada. Versões conferidas no PyPI em **29/07/2026**:
+
+| | FastAPI | Litestar |
+|---|---|---|
+| Versão | `0.140.13` | `2.24.0` (11/06/2026) |
+| Python | ≥ 3.10 | ≥ 3.8, < 4.0 |
+| Base | Starlette ≥ 0.46 + Pydantic ≥ 2.9 | camada ASGI própria; **msgspec ≥ 0.18.2 é dependência de núcleo** |
+| Adoção | ~80 mil estrelas, ~4,5 mi downloads/dia | ~5,9 mil estrelas |
+| Extras | ecossistema de terceiros | `sqlalchemy`, `jwt`, `opentelemetry`, `redis`/`valkey`, 4 UIs de OpenAPI |
+
+São o mesmo tipo de coisa — ASGI, async, rotas por type hint, OpenAPI automático. A diferença é
+de **escopo**: FastAPI é deliberadamente pequeno e você monta o resto; Litestar traz guards de
+autorização, caching, rate limiting, channels, DTOs e integração de ORM como parte do framework.
+
+### O que pesa para este projeto
+
+**1. `advanced-alchemy` — de longe o maior fator.** Versão `1.11.0`, mantida pela **Litestar
+Organization**. Entrega pronto: repositórios sync e async com CRUD e operações em lote, camada de
+serviço, classes base com **colunas de auditoria** e PK UUID/BigInt, configuração de Alembic com
+CLI, e filtros de listagem (`LimitOffset`, `SearchFilter`, `BeforeAfter`, `CollectionFilter`) com
+um `list_and_count()` que devolve **linhas e total numa chamada**.
+
+Compare com o que a S0 escreveu à mão: `base_model.py`, `base_service.py`, `listing.py` inteiro e
+os mixins. É quase tudo biblioteca do outro lado. E "listagem server-side" é o entregável nº 5,
+julgado por **clareza** e por **linhas de código** — dois dos seis critérios.
+
+Dois detalhes que mudam a conversa:
+
+- Ele **suporta chave primária composta** em repositórios e operações em lote. É exatamente o
+  nosso `(tenant_id, id)`, que costuma ser onde camadas de repositório genéricas quebram.
+- Ele tem **extensão oficial para FastAPI** (`advanced_alchemy.extensions.fastapi`), com
+  `provide_session()`, `provide_service()` e `commit_mode`. Não é exclusivo do Litestar.
+
+**2. DTOs.** O Litestar deriva entrada e saída direto do modelo SQLAlchemy, com include/exclude e
+relações aninhadas. No FastAPI se escreve um schema Pydantic paralelo por modelo — foi o que os
+`schemas.py` da S0 fizeram. Para as 7 tabelas do bake-off, é bastante repetição.
+
+**3. Guards.** O Litestar separa autorização (`guards=[...]`) de injeção de dependência. No
+FastAPI as duas passam pelo mesmo `Depends` — foi assim que o `require("recurso", "acao")` saiu.
+Funciona, mas mistura os conceitos.
+
+**4. Camadas.** Litestar permite declarar dependências, guards e middleware em quatro níveis
+(app → router → controller → handler), com merge. FastAPI é mais plano.
+
+**5. Desempenho.** O Litestar anuncia vantagem via msgspec, e benchmarks de terceiros repetem
+isso. Num ERP dominado por I/O de banco, é ruído: o gargalo será o Postgres, não a serialização.
+**Não deveria pesar na decisão.**
+
+### O que não difere
+
+Para o que o bake-off está realmente testando — RLS, `SET LOCAL` no `after_begin`, PK composta,
+FK composta — **a escolha é indiferente**. É tudo SQLAlchemy puro, e os 4 testes de isolamento
+sairão praticamente idênticos.
+
+Nem o Litestar nem o `advanced-alchemy` trazem RLS pronto: `tenancy.py` é código nosso nos dois
+casos. Existe prior art de terceiros (`sqlalchemy-tenants`, com decorator `@with_rls` e session
+manager por tenant; `fastapi-rowsecurity`) — vale olhar como referência, não adotar sem avaliar.
+
+### O confundidor que precisa ser combinado antes
+
+Como o `advanced-alchemy` roda em FastAPI também, comparar **"FastAPI cru" contra "Litestar +
+advanced-alchemy"** mede duas variáveis ao mesmo tempo — e provavelmente elege a biblioteca, não
+o framework. Duas saídas honestas, a combinar com o Henrique:
+
+- **os dois usam** `advanced-alchemy` → compara-se framework;
+- **nenhum usa** → compara-se o que cada um traz de fábrica.
+
+Qualquer uma serve; a mistura, não.
+
+### Palpite honesto
+
+Litestar tende a ganhar em linhas de código e clareza da listagem. FastAPI tende a ganhar no
+critério **"atrito com assistente de IA"**, e não por mérito técnico: está muito mais presente no
+material de treino dos assistentes, então o Litestar deve render mais alucinação de API. Como
+esse é um critério declarado do bake-off, é justo que apareça — só não deve ser confundido com
+qualidade do framework.
+
 ## Retrabalho na S0 já entregue
 
 A S0 foi construída com `empresa_id` em coluna, dinheiro em `Numeric(15,2)` e nomes em
