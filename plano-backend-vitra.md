@@ -1,8 +1,12 @@
 # Plano — Backend VITRA (substituto do SoftLux) em Python + FastAPI + SQLAlchemy
 
-> **Escopo:** este documento cobre **apenas a implementação Python/FastAPI**, neste repositório.
-> Os protótipos .NET e Litestar do bake-off são de outros devs, em outros repositórios — o que
-> aparece deles aqui é só o contrato comum que todos precisam respeitar.
+> **Escopo:** este documento cobre **apenas o servidor, em Python/FastAPI**, neste repositório.
+> O **front** do VITRA já está decidido e em construção em TypeScript (Next.js 16, Tailwind +
+> shadcn/ui, TanStack Query/Table, react-hook-form + Zod) — não é assunto daqui. Os protótipos
+> .NET e Litestar do bake-off são de outros devs, em outros repositórios.
+>
+> O que o VITRA já decidiu sobre **dado e domínio** vale para nós independentemente de qual
+> stack de servidor vencer. Está reunido em "O que herdamos do resto do VITRA".
 
 ## Contexto
 
@@ -11,11 +15,11 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-**Estado:** a F0 está entregue neste repositório. Em seguida entra o **bake-off**, que decide
+**Estado:** a S0 está entregue neste repositório. Em seguida entra o **bake-off**, que decide
 qual stack leva o servidor do VITRA. Ele trouxe consigo uma mudança arquitetural que este plano
 absorveu por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
 Row-Level Security com chave composta**. Ver "Multiempresa por RLS", "Bake-off" e "Retrabalho na
-F0 já entregue".
+S0 já entregue".
 
 Se a nossa stack **não** for a escolhida, o que sobrevive deste plano é o modelo de dados e as
 decisões de domínio — as ~20 telas, os 5 mecanismos, o que o legado ensina. Vale para quem
@@ -34,6 +38,68 @@ implementar, em qualquer linguagem.
 | `Sistema` (p.12) | Configuração ▸ · Importação ▸ (Importar Produtos, Produtos via Planilha) · Exportação ▸ · Manutenção ▸ · Enviar E-mail · Gerador de Etiquetas · Carregar Chave de uso · Editor de Texto |
 
 `Tabelas` e `CRM` continuam sem captura.
+
+## O que herdamos do resto do VITRA
+
+Fonte: espaço **VITRA** no Confluence — "Resumo Executivo para Devs" e "Guia de Engenharia"
+(Partes 1–3 e Etapas de Desenvolvimento). Nada disso está em disputa no bake-off: é contrato,
+e o servidor que vencer terá que respeitar. O estado vivo do projeto mora na memória do repo
+`doutorferr0/projetos-claude` (pasta `vertz-erp`) e **vence** qualquer página, inclusive esta.
+
+**Convenções de dado — vinculantes:**
+
+| Regra | Detalhe |
+|---|---|
+| Dinheiro | inteiro em centavos (`bigint`). R$ 1.234,56 = `123456`. Nunca float |
+| Quantidade | `numeric(14,3)` com `CHECK >= 0` |
+| CNPJ/CPF | `varchar(14)`, **caixa alta, sem máscara**, já pronto para o CNPJ alfanumérico (regra vale a partir de 31/07/2026) |
+| Atributos flexíveis | `JSONB` **tipado**, validado por schema na aplicação (specs de luminária, dados fiscais, endereços) |
+| Estoque | `stock_qty` é saldo **derivado**; todo movimento grava o lançamento na **mesma transação** |
+| Auditoria | append-only, gravada **na mesma transação** do dado que a originou. Não é fase futura |
+| Banco | PostgreSQL 17 é o **único** armazenamento — negócio, sessão, auditoria, eventos e filas |
+
+**Planos de dado.** O modelo separa o que é do grupo do que é de cada CNPJ:
+
+- **Global:** identidade de funcionários, catálogo mestre de produtos, **fornecedores, clientes e
+  profissionais**.
+- **Por empresa (`tenant_id`):** preço, estoque, vínculo de papel, documentos.
+
+Hierarquia: `organizations` → `tenants` (1 CNPJ = 1 tenant) → `employees` (identidade global) →
+`employee_company` (N:N, papel por empresa). E `products` (mestre) → `product_variants`
+(acabamento × tamanho) → `product_tenant` (preço/estoque/fiscal por empresa).
+
+> ⚠️ **Divergência a resolver com o Henrique.** O Resumo Executivo põe o **catálogo mestre no
+> plano global**; o DDL do bake-off cria `products` **com `tenant_id` e RLS**. São desenhos
+> diferentes. No bake-off seguimos o DDL, que é fixo. Para o VITRA real, isso precisa de
+> decisão — e ela muda onde clientes e fornecedores vivem também.
+
+**Isolamento: dois desenhos em jogo.** O VITRA implementou isolamento na **camada de aplicação**,
+com helpers tipados — `scoped(empresaAtiva)` para leitura/escrita, `groupScoped(vínculos)` para
+leitura consolidada do grupo (somente-leitura *por tipo*, e auditada), com o acesso cru ao banco
+**não exportado**. RLS aparece ali como "segunda camada opcional". O bake-off inverte: RLS é a
+trava primária. Não é contradição a resolver por nós — é justamente uma das coisas que o
+bake-off está medindo.
+
+O que isso corrige neste plano: **leitura consolidada entre empresas não é impossível sob RLS.**
+`groupScoped` é requisito real, e sob RLS ele vira um predicado que aceita lista
+(`tenant_id = ANY(...)`) num caminho separado, somente-leitura e auditado — não um furo na
+política. Escrita cruzada continua proibida.
+
+**Fiscal.** Delegado ao **Focus NFe**; o sistema monta o documento e guarda o retorno, não emite.
+E **nasce com os grupos IBS/CBS da Reforma** — NF-e sem eles passa a ser rejeitada em
+**03/08/2026**. Continua fora do escopo do servidor nesta fase, mas o modelo de item precisa
+guardar o que a emissão vai pedir.
+
+**Qualidade.** Teste de isolamento roda contra **Postgres real**, nunca dublê, com fixtures de
+sufixo único por execução — e prova o **caso positivo antes do negativo**, para que uma fixture
+vazia *reprove* o teste em vez de deixá-lo passar por acidente. CI sobe Postgres efêmero, aplica
+migrations e roda tudo; CI vermelho = sessão não terminou.
+
+**Processo.** Cada decisão arquitetural relevante vira um **ADR**. Commits Conventional, curtos,
+focados no *porquê*. Trunk único com feature flags. Segredo nunca entra no repositório.
+
+**Produção** é self-hosted (VPS em São Paulo + Dokploy + Cloudflare), por soberania de dado e
+LGPD. O Neon é **só** banco de desenvolvimento e do bake-off.
 
 ## Decisões travadas com o usuário
 
@@ -87,6 +153,8 @@ empresa — o serviço **não** escreve filtro nenhum) e por rotas somente-GET.
   `Numeric`. A conversão para reais é responsabilidade da borda (schema de saída), nunca do banco
 - quantidade: `Numeric(14, 3)`, com `CHECK (>= 0)` onde o saldo não pode furar
 - percentual: `Numeric(9, 4)` — o total do orçamento mostra `Desconto 0,0010 %`, são 4 casas
+- CNPJ/CPF: `varchar(14)`, **caixa alta e sem máscara**. A S0 gravou `varchar(18)` com máscara;
+  está errado e entra no retrabalho. Sem máscara também é o que o CNPJ alfanumérico exige
 - tabela por empresa: **PK composta `(tenant_id, id)`**, e toda FK entre tabelas por empresa
   carrega o `tenant_id` junto — `FOREIGN KEY (tenant_id, product_id) REFERENCES products
   (tenant_id, id)`. É o que torna *fisicamente impossível* ligar o preço da empresa A ao
@@ -398,9 +466,17 @@ sai da query string**: a empresa vem da transação (RLS), não de um parâmetro
 escolhe — deixá-lo seria reabrir por fora a porta que o RLS fecha.
 Toda rota mutante passa por `Depends(require("recurso", "acao"))`.
 
+**Quem consome isto é o front Next.js.** Duas consequências:
+
+- A listagem responde **linhas + total** (`{itens, total, pagina, tamanho, paginas}`), que é
+  exatamente o contrato que o TanStack Table server-side espera. Já é o formato do `Pagina[T]`.
+- Um servidor Python **não** pode usar tRPC, que é o mecanismo TypeScript de contrato do front
+  hoje. Daí "OpenAPI publicado" ser entregável do bake-off e não detalhe: é o substituto do
+  contrato tipado, e é por ele que o front geraria o cliente.
+
 ## Bake-off — escolha da stack
 
-Antes de seguir com F1, o servidor do VITRA é decidido por comparação: **três protótipos que
+Antes de seguir com S1, o servidor do VITRA é decidido por comparação: **três protótipos que
 fazem a mesma coisa**, sobre o mesmo banco e os mesmos dados, avaliados lado a lado.
 
 > **Escopo deste documento: o protótipo FastAPI, e só ele.** Os protótipos .NET e Litestar são
@@ -474,7 +550,7 @@ entregam o equivalente na stack deles; comparabilidade é o único motivo de a l
    - a conexão da aplicação não consegue desligar nem burlar a política.
 4. **Teste de concorrência:** dois requests simultâneos de empresas diferentes não se misturam.
 5. **Listagem de produtos server-side** — busca textual, ordenação e paginação no servidor —
-   apontando para o banco compartilhado. Reusa `ListParams` da F0 direto.
+   apontando para o banco compartilhado. Reusa `ListParams` da S0 direto.
 6. **OpenAPI publicado.**
 7. **CI verde:** lint + tipos + testes.
 
@@ -503,13 +579,13 @@ vira chute. Vale um arquivo solto de notas durante a FB.
 Empate técnico desempata por: velocidade de entrega das ~20 telas reais, facilidade do ETL de
 importação, ecossistema de IA.
 
-**Dois dos sete itens já estão prontos desde a F0:** "salvar pai+filhos" é o
+**Dois dos sete itens já estão prontos desde a S0:** "salvar pai+filhos" é o
 `substituir_conjunto`, e "listagem server-side" é o `ListParams`. O trabalho real da FB é o RLS
 — e é justamente onde as três stacks vão divergir mais.
 
-## Retrabalho na F0 já entregue
+## Retrabalho na S0 já entregue
 
-A F0 foi construída com `empresa_id` em coluna, dinheiro em `Numeric(15,2)` e nomes em
+A S0 foi construída com `empresa_id` em coluna, dinheiro em `Numeric(15,2)` e nomes em
 português. A decisão por RLS muda isso. O que precisa mexer, em ordem de dependência:
 
 | Peça | Mudança |
@@ -522,6 +598,8 @@ português. A decisão por RLS muda isso. O que precisa mexer, em ordem de depen
 | `app/modules/empresa/` | `Empresa` → `tenants` (tabela global); `filial`/`centro_custo` viram por-empresa |
 | `app/modules/apoio/` | `TabelaApoio` → `catalog_lookups`, `dominio` → `kind` |
 | `app/modules/auth/` | `Usuario` → `employees` (global) + `employee_company` (papel por empresa) |
+| `Empresa.cnpj` / `Filial.cnpj` | `String(18)` com máscara → `String(14)`, caixa alta, sem máscara |
+| Auditoria | Sai da S6 e vira transversal: append-only, na mesma transação da escrita |
 | Migrações | O RLS entra em migração própria, em SQL cru, com `FORCE` e as 4 políticas por tabela |
 | Testes | `conftest` passa de banco fixo para Testcontainers; some `create_all`, fica `alembic upgrade` |
 
@@ -531,7 +609,12 @@ inteiros. O que muda é a camada de identidade e o formato da chave.
 
 ## Fases de implementação
 
-**F0 — Fundação.** ✅ *Entregue.* Projeto, docker-compose, config, sessão async, Alembic,
+**Por que `S` e não `F`.** O VITRA tem as suas próprias `FASE 0 / 1 / 2` (Fundação, Identidade
+e Empresas, Catálogo — as três já concluídas ou em curso no front) e mais 12 `Etapas` no Guia de
+Engenharia. Chamar as nossas de `F0…F6` criava duas "Fundação" diferentes na mesma conversa — e
+colidia até com as teclas `F4`/`F5`/`F6` do legado citadas neste plano. Aqui é `S` de **servidor**.
+
+**S0 — Fundação.** ✅ *Entregue.* Projeto, docker-compose, config, sessão async, Alembic,
 `main.py`, handlers de erro, `ListParams`, mixins, `substituir_conjunto` (replace-set das
 grades), serviço de numeração, auth JWT + RBAC granular, `empresa`/`filial`/`centro_custo`,
 tabela de apoio genérica + `cidade`/`uf`/`banco`, busca sem acento.
@@ -540,36 +623,38 @@ tabela de apoio genérica + `cidade`/`uf`/`banco`, busca sem acento.
 Duas notas de execução, decididas durante a implementação:
 
 - A tabela `autorizacao_documento` **entra já na migração inicial**, sem endpoints. O serviço
-  que a consome é da F4; antecipar só a tabela evita uma migração extra e não custa nada.
+  que a consome é da S4; antecipar só a tabela evita uma migração extra e não custa nada.
 - As FKs de `criado_por_id` fecham o ciclo `usuario → empresa → cidade → uf → usuario` e usam
   `use_alter`. O `op.create_table` do Alembic **descarta essas FKs em silêncio**: elas precisam
   de `create_foreign_key` explícito no fim do `upgrade()`. Pelo mesmo motivo os testes aplicam
   a migração em vez de `Base.metadata.create_all` — senão o schema de teste e o de produção
   divergem sem ninguém perceber. Vale para toda migração das fases seguintes.
 
-**FB — Bake-off.** ⏭ *Próxima.* Entra **entre F0 e F1**: as 7 tabelas com chave composta, RLS
+**SB — Bake-off.** ⏭ *Próxima.* Entra **entre S0 e S1**: as 7 tabelas com chave composta, RLS
 com as 4 políticas, os 4 testes de isolamento, o de concorrência, listagem server-side contra o
 banco compartilhado, OpenAPI e CI. Carrega junto o retrabalho da seção anterior — não dá para
 fazer os testes de isolamento sem `tenancy.py`. *Entregue quando:* os 4 testes de isolamento
 passam e a listagem responde apontando para o Neon.
 
-**F1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
+**S1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa
-mixins de F0; cada um é ~1 modelo + schemas + service herdando `BaseService`.
+mixins de S0; cada um é ~1 modelo + schemas + service herdando `BaseService`.
 
-**F2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
+**S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
 especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor.
 
-**F3 — Estoque.** Depósito, localização, saldo, movimento append-only, reserva. Testes de
+**S3 — Estoque.** Depósito, localização, saldo, movimento append-only, reserva. Testes de
 concorrência no saldo (duas saídas simultâneas não podem furar).
 
-**F4 — Orçamento.** Documento base, ambientes, itens, pré-produto, desconto em 3 níveis,
+**S4 — Orçamento.** Documento base, ambientes, itens, pré-produto, desconto em 3 níveis,
 totais, ciclo de vida, revisão, autorização por documento.
 
-**F5 — Compras.** Pedido (N fornecedores) → ordem (1 fornecedor) → recebimento que gera
+**S5 — Compras.** Pedido (N fornecedores) → ordem (1 fornecedor) → recebimento que gera
 movimento de entrada. Ligação `orçamento/pedido de venda → pedido de compra`, com `destino`.
 
-**F6 — Endurecimento.** Auditoria (quem mudou o quê), importação de produtos por planilha
+**S6 — Endurecimento.** ~~Auditoria~~ — a auditoria **saiu daqui**: o contrato do VITRA a exige
+append-only e na mesma transação da escrita, desde a primeira tabela, então ela é transversal e
+não um endurecimento posterior. Restam: importação de produtos por planilha
 (`Sistema → Importação`), seeds realistas, testes e2e do fluxo completo, OpenAPI revisado.
 
 ## Verificação
@@ -608,16 +693,19 @@ que o RLS torna possível escrever e que o desenho antigo não tinha como provar
 ## Dívida assumida e lacunas
 
 **Assumido por decisão do usuário:**
-- Sem motor fiscal e sem NFe. `ncm`/`cest`/`origem` ficam gravados. Quando entrar, é tabela de
-  regra `NCM × Operação × CFOP × Consumidor Final × UF` + cálculo no documento — o modelo de
-  item já guarda o que ela precisa. Nada no legado indica IBS/CBS (é pré-Reforma).
+- Sem motor fiscal e sem NFe **neste servidor**. `ncm`/`cest`/`origem` ficam gravados; o modelo
+  de item guarda o que a emissão vai pedir. **Correção importante:** o legado é pré-Reforma e
+  não menciona IBS/CBS, mas isso **não** significa que o VITRA possa nascer sem eles — NF-e sem
+  os grupos IBS/CBS passa a ser rejeitada em **03/08/2026**, e a emissão é delegada ao Focus
+  NFe, não construída aqui. A versão anterior deste plano tratava o silêncio do legado como
+  permissão; era leitura errada.
 - Financeiro, CRM, metas, ganhos sobre vendas e relatórios fora desta entrega.
 
 **Lacunas reais das fontes** — resolvidas com decisão de projeto, a confirmar com o usuário
 quando houver novas capturas:
 - `Cliente → Obra` nunca foi capturada. Modelo mínimo assumido:
   `obra(id, cliente_id, nome, endereco*, ativo)` com ambientes vivendo no orçamento.
-- `Profissional Externo → Participação` (comissão/rateio) sem captura. Fica **fora de F1**;
+- `Profissional Externo → Participação` (comissão/rateio) sem captura. Fica **fora de S1**;
   a FK do orçamento para profissional já existe, então adicionar depois não quebra nada.
 - `Orçamento → Serviços` e `→ Pagamento` sem captura. Serviços tem cadastro próprio no menu,
   então provavelmente é uma segunda coleção de itens no orçamento. Não modelado agora.
@@ -627,16 +715,16 @@ quando houver novas capturas:
   dados vai precisar decidir para onde vai cada valor legado.**
 - `VIA HF ILUMINAÇÃO` aparece como fornecedor de um pedido — uma empresa do grupo vende para a
   outra. `fornecedor_empresa` suporta isso, mas se for **transferência entre empresas** com
-  regra própria, precisa confirmação. **Com RLS isso fica mais delicado:** uma operação que
-  precisa enxergar as duas empresas na mesma transação não tem como, por construção. O caminho
-  é modelar como duas operações espelhadas (saída em A, entrada em B), cada uma na sua
-  transação, ligadas por um identificador comum — nunca afrouxando a política.
+  regra própria, precisa confirmação. Sob RLS, a **escrita** cruzada continua proibida: modela-se
+  como duas operações espelhadas (saída em A, entrada em B), cada uma na sua transação, ligadas
+  por um identificador comum. A **leitura** consolidada, essa sim, é caso previsto — é o
+  `groupScoped` do VITRA, e sob RLS vira predicado com lista, somente-leitura e auditado.
 
 **Aberto pelo bake-off, a decidir quando ele terminar:**
 - **Papel fixo × RBAC granular.** `employee_company.role` tem 5 valores; o plano prevê
   permissões recurso+ação. A ponte proposta (papel = grupo, permissões no grupo) precisa ser
   validada contra o que as ~20 telas realmente exigem.
-- **Migração de `Numeric(15,2)` para centavos.** A F0 já gravou `limite_desconto_pct` e o
+- **Migração de `Numeric(15,2)` para centavos.** A S0 já gravou `limite_desconto_pct` e o
   modelo previa dinheiro em `Numeric`. Nada em produção ainda, então a conversão é barata
   agora e cara depois — é motivo para não adiar a virada.
 - **Onde a empresa ativa vem no request.** JWT, header ou path. O bake-off não decide; o VITRA
