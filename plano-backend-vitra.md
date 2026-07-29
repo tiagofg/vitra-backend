@@ -1,5 +1,9 @@
 # Plano — Backend VITRA (substituto do SoftLux) em Python + FastAPI + SQLAlchemy
 
+> **Escopo:** este documento cobre **apenas a implementação Python/FastAPI**, neste repositório.
+> Os protótipos .NET e Litestar do bake-off são de outros devs, em outros repositórios — o que
+> aparece deles aqui é só o contrato comum que todos precisam respeitar.
+
 ## Contexto
 
 A Vertz opera hoje no **SoftLux 1.0.2.1521** (Fácil IT Software), um ERP desktop Windows para
@@ -7,7 +11,15 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-Não existe código ainda — é greenfield. O `/home/tiagofg` não contém nenhum projeto VITRA.
+**Estado:** a F0 está entregue neste repositório. Em seguida entra o **bake-off**, que decide
+qual stack leva o servidor do VITRA. Ele trouxe consigo uma mudança arquitetural que este plano
+absorveu por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
+Row-Level Security com chave composta**. Ver "Multiempresa por RLS", "Bake-off" e "Retrabalho na
+F0 já entregue".
+
+Se a nossa stack **não** for a escolhida, o que sobrevive deste plano é o modelo de dados e as
+decisões de domínio — as ~20 telas, os 5 mecanismos, o que o legado ensina. Vale para quem
+implementar, em qualquer linguagem.
 
 **Correção às fontes:** a transcrição lista `Movimentação`, `Financeiro`, `Relatórios`,
 `Controle de Acesso` e `Sistema` como "menus inteiros não capturados". **Eles estão no PDF**
@@ -28,8 +40,12 @@ Não existe código ainda — é greenfield. O `/home/tiagofg` não contém nenh
 1. **Escopo desta entrega: núcleo comercial.** Cadastros, produtos com variantes, estoque com
    endereçamento, orçamento/pedido de venda, pedido e ordem de compra. Financeiro, CRM, metas,
    ganhos sobre vendas e relatórios ficam para fases seguintes — mas o modelo não os impede.
-2. **Multiempresa por `empresa_id` em linha**, banco único PostgreSQL. Vínculo
-   fornecedor↔empresa compradora é **histórico com vigência**, não coluna.
+2. **Multiempresa imposta pelo banco, não pelo código.** Row-Level Security + chave primária
+   composta `(tenant_id, id)` em toda tabela por empresa. A aplicação declara a empresa ativa
+   no início da transação; a partir daí o Postgres só mostra e só aceita linhas daquela
+   empresa. Ver "Multiempresa por RLS" — é a decisão mais estruturante do projeto e
+   **substitui** o desenho anterior de `empresa_id` filtrado no serviço.
+   Vínculo fornecedor↔empresa compradora continua **histórico com vigência**, não coluna.
 3. **Fiscal fora de escopo.** `ncm`, `cest`, `origem` ficam como campos do produto para não
    perder o dado; **não** se constrói o motor de regra `NCM × Operação × CFOP × Consumidor
    Final × UF` nem emissão de NFe agora. Ver "Dívida assumida".
@@ -50,26 +66,86 @@ o projeto caber:
 | Listagem com barra de 7 ações — 3 telas | Um `ListParams` comum: `busca_codigo`, filtros, ordenação, paginação. `Excluir` vira `DELETE`; `Cancelar` vira `POST /{id}/cancelar`. |
 | Documento cabeçalho+itens+totais — 3 telas | Classe base de documento: numeração série+número, máquina de estados, recálculo de totais no serviço, nunca no cliente. |
 
-Os outros três padrões (formulário com abas, recorte por empresa, consulta somente-leitura)
-resolvem-se por mixins e por `empresa_id`.
+Os outros três padrões resolvem-se por mixins (formulário com abas), por RLS (recorte por
+empresa — o serviço **não** escreve filtro nenhum) e por rotas somente-GET.
 
 ## Stack
 
 - Python 3.12, **FastAPI**, **SQLAlchemy 2.0 async** (`Mapped[...]` / `mapped_column`), asyncpg
-- PostgreSQL 16, **Alembic** para migrações, extensão `unaccent` para busca sem acento
+- **PostgreSQL 17** — no bake-off hospedado no Neon (região São Paulo), com pooler e
+  `sslmode=require`. Fora do bake-off, Postgres local. Nada no código depende do Neon
+- **Alembic** para migrações, incluindo o RLS em SQL cru; extensão `unaccent` (busca sem
+  acento) e `pgcrypto` (`gen_random_uuid`)
 - Pydantic v2 (`pydantic-settings` para config)
 - `argon2-cffi` para senha, JWT via `pyjwt`
-- pytest + pytest-asyncio + httpx.AsyncClient, banco de teste em container
+- pytest + pytest-asyncio + httpx.AsyncClient; banco de teste **descartável via
+  Testcontainers** — não mais um container fixo, porque cada suíte precisa recriar o RLS do zero
 - ruff + mypy, docker-compose para dev
 
-**Regras de tipo não negociáveis** (vêm direto das capturas):
-- dinheiro: `Numeric(15, 2)` — nunca float
+**Regras de tipo não negociáveis:**
+- dinheiro: **`BIGINT` em centavos** (`price_cents`) — R$ 12,34 é `1234`. Nunca float, nunca
+  `Numeric`. A conversão para reais é responsabilidade da borda (schema de saída), nunca do banco
+- quantidade: `Numeric(14, 3)`, com `CHECK (>= 0)` onde o saldo não pode furar
 - percentual: `Numeric(9, 4)` — o total do orçamento mostra `Desconto 0,0010 %`, são 4 casas
-- quantidade: `Numeric(15, 4)` — unidade de entrada ≠ unidade de saída, com fator
-- toda tabela: `id` UUID, `criado_em`, `atualizado_em`, `criado_por_id`
+- tabela por empresa: **PK composta `(tenant_id, id)`**, e toda FK entre tabelas por empresa
+  carrega o `tenant_id` junto — `FOREIGN KEY (tenant_id, product_id) REFERENCES products
+  (tenant_id, id)`. É o que torna *fisicamente impossível* ligar o preço da empresa A ao
+  produto da empresa B
+- tabela global (sem `tenant_id`): PK `id` UUID simples
 - toda busca textual (`?busca=` e `/lookup?q=`) passa por `vitra_unaccent` nos **dois** lados,
   para `sao` achar `São Paulo` e `são` achar `Sao`. É wrapper `IMMUTABLE` sobre `unaccent()`,
   justamente para poder virar índice funcional quando o volume pedir
+
+**Idioma dos identificadores.** O schema compartilhado do bake-off é fixo e está em inglês
+(`tenants`, `products`, `product_variants`). Como não se pode alterar DDL lá, **nome de tabela e
+de coluna passa a ser em inglês** em todo o projeto — schema bilíngue seria pior que qualquer
+uma das duas opções. Classe ORM, serviço, rota e mensagem de erro **continuam em português**:
+é a língua do domínio e da equipe, e o mapeamento explícito do SQLAlchemy absorve a diferença
+(`class Produto(...): __tablename__ = "products"`).
+
+## Multiempresa por RLS — o mecanismo
+
+O recorte entre empresas deixa de ser um `WHERE empresa_id = ...` que alguém pode esquecer e
+passa a ser política do Postgres. Duas peças:
+
+**1. Toda transação declara a empresa ativa.**
+
+```sql
+SET LOCAL app.current_tenant = '<uuid da empresa>';
+```
+
+`SET LOCAL`, nunca `SET`: vale até o fim da transação e por isso é seguro com pool de conexão —
+a conexão devolvida ao pool não carrega a empresa do request anterior.
+
+**2. Cada tabela por empresa tem RLS ligado e quatro políticas** (SELECT/INSERT/UPDATE/DELETE),
+todas sobre o mesmo predicado:
+
+```sql
+tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid
+```
+
+O `NULLIF` é obrigatório: sem ele, uma conexão de pool que ainda não recebeu `SET LOCAL` tenta
+converter string vazia para uuid e **estoura**, em vez de simplesmente não casar. Com ele, o
+predicado dá `NULL`, nada casa, e a consulta volta vazia.
+
+Consequências que precisam ficar explícitas, porque mudam como se lê e se escreve o código:
+
+- **Esquecer a empresa dá listagem vazia, nunca dado da empresa errada.** É a propriedade que
+  se está comprando. Em troca, "voltou vazio do nada" passa a ser um sintoma comum em
+  desenvolvimento, e a primeira hipótese é sempre a mesma: faltou o `SET LOCAL`.
+- **`ENABLE` não basta, tem que ser `FORCE ROW LEVEL SECURITY`** — o dono da tabela ignora RLS
+  por padrão. E a aplicação **nunca** conecta como dono: usuário de runtime separado, sem
+  `BYPASSRLS`. Sem essas duas coisas o RLS é decorativo.
+- **No SQLAlchemy, o `SET LOCAL` é emitido no evento `after_begin`, pela `Connection`, não pela
+  `Session`.** Emitir pela Session pode disparar fora da transação certa. Isso vira uma peça de
+  `app/core/tenancy.py` e um `Depends` que resolve a empresa do request (do JWT, do header ou
+  do path) antes de qualquer query.
+- **O serviço não escreve mais filtro de empresa.** `ListingSpec.tem_empresa` e o
+  `EmpresaScopedMixin` perdem a razão de existir na forma atual — o filtro está no banco.
+
+**O que isso não resolve:** RLS separa empresas, não autoriza operações. O RBAC recurso+ação
+continua necessário e ortogonal — o banco garante *de qual empresa* é o dado; a aplicação
+garante *se aquele usuário pode* criar, editar ou excluir.
 
 ## Estrutura de diretórios
 
@@ -83,9 +159,10 @@ vitra-backend/
 │   │   ├── errors.py              # exceções de domínio → HTTP
 │   │   ├── listing.py             # ListParams, paginação, ordenação
 │   │   ├── numbering.py           # série + número por documento/empresa
+│   │   ├── tenancy.py             # SET LOCAL app.current_tenant no after_begin + Depends
 │   │   └── permissions.py         # require(recurso, acao)
 │   ├── common/
-│   │   ├── mixins.py              # Timestamps, Ativo, EmpresaScoped, Endereco, Contatos, RedesSociais
+│   │   ├── mixins.py              # Timestamps, Ativo, TenantScoped (PK composta), Endereco, Contatos
 │   │   ├── base_model.py  base_service.py  child_set.py
 │   └── modules/
 │       ├── auth/        usuario, grupo, permissao, autorizacao_documento
@@ -109,16 +186,25 @@ negócio mora no service; nenhum `select()` em router.
 
 O CRUD trivial não precisa de plano. O que segue são as decisões onde errar custa retrabalho.
 
-### 1. Tabela de apoio genérica (`apoio`)
+**Convenção que vale para todos os esboços abaixo:** tabela por empresa tem PK `(tenant_id, id)`
+e toda FK interna leva o `tenant_id` junto; tabela global tem PK `id`. Onde se lê `empresa_id`
+numa FK para `tenants`, é vínculo de negócio (qual empresa *compra* de um fornecedor), não
+recorte de acesso — esse é do RLS.
+
+### 1. Tabela de apoio genérica (`catalog_lookups`)
 
 Cobre os 19 `[combo +...]`: Setor, Grau de Instrução, Profissão, Raça/Cor, Estado Civil,
 Nacionalidade, Cargo, Vínculo, Categoria, Tipo de Produto, Tipo da Peça, Tipo da Linha,
 Classificação, Designer\Modelo, Fábrica, Marca, Materiais, Unidade, Acabamento, Tamanho.
 
 ```
-tabela_apoio(id, dominio Enum, codigo, descricao, ativo, empresa_id NULL, ordem)
-  unique(dominio, codigo, empresa_id)
+catalog_lookups(id, kind, name, active)          -- GLOBAL, sem tenant_id
+  unique(kind, name)
 ```
+
+O schema do bake-off resolveu uma dúvida que o plano deixava em aberto: a tabela de apoio é
+**global**, não por empresa. Os 19 combos são vocabulário do grupo, não de cada loja — some o
+`empresa_id NULL` que valeria "global" e some junto a unicidade de três colunas.
 
 Router genérico `/api/v1/apoio/{dominio}` com GET (lista/lookup) e POST (criar na hora — é
 literalmente o botão `...`). `Cidade` e `Banco` **não** entram aqui: têm campos próprios
@@ -133,23 +219,37 @@ separadas, porque a tela trata como bloco inline e o join extra não paga.
 
 ### 3. Produto e variante — o ponto mais importante do catálogo
 
-**Preço e estoque mínimo vivem na variante, não no produto.** A variante é `Acabamento × Tamanho`.
+**Preço e estoque não vivem no produto nem na variante — vivem numa terceira tabela.** A
+variante é `Acabamento × Tamanho`; `product_tenant` pendura preço e estoque abaixo dela. O
+bake-off já traz esse desenho pronto e o plano o adota inteiro, inclusive além das 7 tabelas.
 
 ```
-produto(id, nosso_codigo, codigo_especial, codigo_reduzido, nossa_descricao,
-        descricao_complementar, dt_vigencia, tipo_produto_id, tipo_peca_id, tipo_linha_id,
-        classificacao_id, designer_id, fabrica_id, marca_id, empresa_compradora_id,
-        unidade_entrada_id, qtd_entrada, unidade_saida_id, qtd_saida,
-        fora_de_linha, consultar_valor, ativo, sobre_medida, publicar_no_site,
-        ncm, cest, origem,                      -- guardados, sem motor fiscal
-        especificacao JSONB)                    -- aba 2: watts, volts, lúmen, ângulo,
-                                                -- temp. cor, dimensões produto/embalagem, etc.
-produto_variante(id, produto_id, acabamento_id, tamanho_id, ativo,
-                 valor_tabela, indice, tipo_valor, estoque_minimo)
-  unique(produto_id, acabamento_id, tamanho_id)
-produto_fornecedor(id, produto_id, fornecedor_id, codigo_fornecedor,
+products(tenant_id, id, code, description, active,
+         -- o VITRA real acrescenta:
+         codigo_especial, codigo_reduzido, descricao_complementar, dt_vigencia,
+         tipo_produto_id, tipo_peca_id, tipo_linha_id, classificacao_id,
+         designer_id, fabrica_id, marca_id, empresa_compradora_id,
+         unidade_entrada_id, qtd_entrada, unidade_saida_id, qtd_saida,
+         fora_de_linha, consultar_valor, sobre_medida, publicar_no_site,
+         ncm, cest, origem,                     -- guardados, sem motor fiscal
+         especificacao JSONB)                   -- aba 2: watts, volts, lúmen, ângulo,
+  PK (tenant_id, id) · unique (tenant_id, code)
+product_variants(tenant_id, id, product_id, finish, size, active)
+  PK (tenant_id, id) · FK (tenant_id, product_id) → products
+  unique (tenant_id, product_id, finish, size)
+product_tenant(tenant_id, id, variant_id,
+               price_cents BIGINT,              -- centavos, nunca Numeric
+               stock_qty NUMERIC(14,3) CHECK (>= 0), min_stock NUMERIC(14,3),
+               indice, tipo_valor)
+  PK (tenant_id, id) · FK (tenant_id, variant_id) → product_variants
+produto_fornecedor(tenant_id, id, product_id, fornecedor_id, codigo_fornecedor,
                    descricao_fornecedor, padrao bool)
+  PK (tenant_id, id) · FK (tenant_id, product_id) → products
 ```
+
+Repare no que a FK composta compra: `product_tenant` só consegue apontar para uma variante **da
+mesma empresa**. Não é convenção nem validação de serviço — o `INSERT` falha. Era exatamente o
+tipo de erro que o desenho antigo (`empresa_id` solto em cada tabela) deixava passar.
 
 A aba 2 (`Outros Dados`) tem ~25 campos luminotécnicos que são **especificação de catálogo, não
 regra de negócio** → `JSONB` validado por um schema Pydantic. Se virarem colunas, cada novo
@@ -177,14 +277,18 @@ coluna no fornecedor é o erro que a tela avisa para não cometer.
 ### 5. Estoque — endereçamento estruturado
 
 ```
-deposito(id, empresa_id, filial_id, nome, ativo)
-localizacao(id, deposito_id, predio, rua, numero, apto)
-saldo(id, variante_id, deposito_id, localizacao_id NULL, quantidade, quantidade_reservada)
-  unique(variante_id, deposito_id, localizacao_id)
-movimento(id, variante_id, deposito_id, localizacao_id, tipo Enum, quantidade,
-          documento_tipo, documento_id, data, usuario_id, observacao)
-reserva(id, variante_id, deposito_id, quantidade, origem_tipo, origem_id, status)
+deposito(tenant_id, id, filial_id, nome, ativo)
+localizacao(tenant_id, id, deposito_id, predio, rua, numero, apto)
+saldo(tenant_id, id, variante_id, deposito_id, localizacao_id NULL,
+      quantidade NUMERIC(14,3) CHECK (>= 0), quantidade_reservada NUMERIC(14,3))
+  unique(tenant_id, variante_id, deposito_id, localizacao_id)
+movimento(tenant_id, id, variante_id, deposito_id, localizacao_id, tipo Enum, quantidade,
+          documento_tipo, documento_id, data, employee_id, observacao)
+reserva(tenant_id, id, variante_id, deposito_id, quantidade, origem_tipo, origem_id, status)
 ```
+
+Todas com PK `(tenant_id, id)` e FKs internas levando `tenant_id`. O `CHECK (quantidade >= 0)`
+no saldo é a segunda linha de defesa contra estoque negativo — a primeira é o `FOR UPDATE`.
 
 **`movimento` é livro-razão append-only**; `saldo` é projeção mantida na mesma transação, com
 `SELECT ... FOR UPDATE` na linha de saldo. Nunca recalcular saldo somando movimentos em request.
@@ -200,6 +304,8 @@ Compartilhado por orçamento, pedido de compra e ordem de compra:
   criação. A transcrição observa que **não é cronológica** — número na criação, emissão depois.
   Sequência obtida com `SELECT ... FOR UPDATE` numa tabela `contador_documento`, dentro da
   transação. Não usar `SEQUENCE` do Postgres: precisa ser por empresa+série e sem buracos.
+  Com RLS o contador fica ainda mais simples: a empresa já está na transação, então a chave
+  efetiva vira `(tipo, série)` sob o recorte do banco.
 - **Totais recalculados no serviço** a cada mutação de item. O cliente nunca envia total.
 - **Máquina de estados** explícita por documento, transições validadas em um só lugar.
 - **Exclusão**: cadastros usam `ativo` (desativação lógica, nunca DELETE). Documentos de venda
@@ -209,17 +315,18 @@ Compartilhado por orçamento, pedido de compra e ordem de compra:
 ### 7. Orçamento — a tela central
 
 ```
-orcamento(id, empresa_id, serie, numero, pasta_id NULL, cliente_id, obra_id NULL,
+orcamento(tenant_id, id, serie, numero, pasta_id NULL, cliente_id, obra_id NULL,
           consultor_id, profissional_externo_id NULL,
           dt_emissao, dt_validade, dt_fechamento NULL,
-          modo_desconto Enum('produto','geral'), desconto_geral_pct, desconto_geral_valor,
-          subtotal, total, status Enum, observacao)
-orcamento_ambiente(id, orcamento_id, nome, ordem)          -- Ambiente F5
-orcamento_item(id, orcamento_id, ambiente_id NULL, ordem,
-               produto_id NULL, variante_id NULL,          -- NULL = Pré Produto
-               pre_produto JSONB NULL,                     -- descrição livre do item a definir
+          modo_desconto Enum('produto','geral'), desconto_geral_pct, desconto_geral_cents,
+          subtotal_cents, total_cents, status Enum, observacao)
+orcamento_ambiente(tenant_id, id, orcamento_id, nome, ordem)     -- Ambiente F5
+orcamento_item(tenant_id, id, orcamento_id, ambiente_id NULL, ordem,
+               product_id NULL, variante_id NULL,         -- NULL = Pré Produto
+               pre_produto JSONB NULL,                    -- descrição livre do item a definir
                fornecedor_id, codigo_fornecedor, descricao_fornecedor,
-               quantidade, unidade_id, valor_unitario, desconto_pct, valor_item,
+               quantidade NUMERIC(14,3), unidade_id,
+               valor_unitario_cents, desconto_pct, valor_item_cents,
                grupo_produto_id, tipo_peca_id)
 ```
 
@@ -245,17 +352,20 @@ Pontos que a tela força:
 ### 8. Compras — pedido e ordem são documentos distintos e ligados
 
 ```
-pedido_compra(id, empresa_id, numero, serie, data, orcamento_id NULL, pedido_venda_id NULL,
-              observacao, total, status)
-pedido_compra_fornecedor(id, pedido_id, fornecedor_id)     -- N fornecedores por pedido
-pedido_compra_item(id, pedido_id, fornecedor_id, produto_id, variante_id,
-                   codigo_fornecedor, descricao_fornecedor, quantidade, unidade_id,
-                   valor_unitario, destino Enum('estoque','obra'), obra_id NULL)
-ordem_compra(id, empresa_id, numero, fornecedor_id, empresa_compradora_id,
-             dt_ordem, dt_envio, dt_prevista, dt_reagendamento, faturamento_minimo,
-             transportadora_id NULL, subtotal, desconto, acrescimo, total, observacao, status)
-ordem_compra_item(id, ordem_id, pedido_compra_item_id NULL, produto_id, variante_id,
-                  quantidade, unidade_id, valor_unitario, valor_total, data)
+pedido_compra(tenant_id, id, numero, serie, data, orcamento_id NULL, pedido_venda_id NULL,
+              observacao, total_cents, status)
+pedido_compra_fornecedor(tenant_id, id, pedido_id, fornecedor_id)  -- N fornecedores por pedido
+pedido_compra_item(tenant_id, id, pedido_id, fornecedor_id, product_id, variante_id,
+                   codigo_fornecedor, descricao_fornecedor, quantidade NUMERIC(14,3),
+                   unidade_id, valor_unitario_cents,
+                   destino Enum('estoque','obra'), obra_id NULL)
+ordem_compra(tenant_id, id, numero, fornecedor_id, empresa_compradora_id,
+             dt_ordem, dt_envio, dt_prevista, dt_reagendamento, faturamento_minimo_cents,
+             transportadora_id NULL, subtotal_cents, desconto_cents, acrescimo_cents,
+             total_cents, observacao, status)
+ordem_compra_item(tenant_id, id, ordem_id, pedido_compra_item_id NULL, product_id, variante_id,
+                  quantidade NUMERIC(14,3), unidade_id,
+                  valor_unitario_cents, valor_total_cents, data)
 ```
 
 Fatos estruturais que a listagem 7.3 revela e que o modelo obedece:
@@ -283,8 +393,141 @@ Fatos estruturais que a listagem 7.3 revela e que o modelo obedece:
 | Compras | CRUD `/pedidos-compra`, `/ordens-compra`, `POST /ordens-compra/{id}/receber` |
 | Autorizações | `POST /autorizacoes`, `POST /autorizacoes/{id}/aprovar|rejeitar` |
 
-Todas as listagens aceitam `?busca=&pagina=&tamanho=&ordenar_por=&ordem=&ativo=&empresa_id=`.
+Todas as listagens aceitam `?busca=&pagina=&tamanho=&ordenar_por=&ordem=&ativo=`. **`empresa_id`
+sai da query string**: a empresa vem da transação (RLS), não de um parâmetro que o cliente
+escolhe — deixá-lo seria reabrir por fora a porta que o RLS fecha.
 Toda rota mutante passa por `Depends(require("recurso", "acao"))`.
+
+## Bake-off — escolha da stack
+
+Antes de seguir com F1, o servidor do VITRA é decidido por comparação: **três protótipos que
+fazem a mesma coisa**, sobre o mesmo banco e os mesmos dados, avaliados lado a lado.
+
+> **Escopo deste documento: o protótipo FastAPI, e só ele.** Os protótipos .NET e Litestar são
+> de outros devs, em outros repositórios. Nada aqui os descreve, os prescreve ou depende deles —
+> o que aparece do bake-off é o contrato comum (banco, schema, entregáveis, critérios), porque
+> é o que torna as três entregas comparáveis.
+
+### Banco compartilhado — o que não se faz
+
+`vitra_bakeoff`, PostgreSQL 17 no Neon, duas empresas fictícias (ABACAXI e UVA).
+
+**Compartilhado significa compartilhado:** os devs das outras duas stacks apontam para este
+mesmo banco, ao mesmo tempo. Daí as regras não serem burocracia.
+
+- **Não criar, alterar ou apagar tabela lá.** A estrutura é fixa. A migração da nossa stack se
+  testa **localmente**, em Postgres descartável (Testcontainers), recriando a mesma estrutura.
+- Só ler e escrever dados, sempre com a empresa declarada na transação.
+- **Nossos testes não escrevem no banco compartilhado.** Suíte inteira roda local; contra o
+  Neon vai só a listagem server-side, que é leitura. Escrita lá é manual e pontual — um teste
+  que suja o dado sujou para os outros dois times também.
+- Bagunçou o dado: avisar o Henrique, que reseta em ~1 min.
+- A string de conexão vive **só no `.env`** — traz senha real e não entra no repositório.
+  O `.env.example` documenta a variável, nunca o valor.
+- O Neon suspende o banco após alguns minutos ociosos: a primeira conexão depois disso leva
+  1–2 s. Não é queda, e o pool precisa tolerar isso.
+
+| Empresa | `tenant_id` |
+|---|---|
+| ABACAXI | `11111111-1111-1111-1111-111111111111` |
+| UVA | `22222222-2222-2222-2222-222222222222` |
+
+### As 7 tabelas
+
+```
+GLOBAIS (sem tenant_id, sem RLS)
+├─ tenants           as 2 empresas (id, name, cnpj, active)
+├─ employees         pessoas — identidade única no grupo (id, name, email, active)
+└─ catalog_lookups   listas genéricas (id, kind, name, active) — os 19 kinds
+
+POR EMPRESA (PK composta, RLS FORCE)
+├─ products          200 itens (tenant_id, id, code, description, active)
+│    └─ product_variants   3 por produto (tenant_id, id, product_id, finish, size, active)
+│         └─ product_tenant   preço/estoque (tenant_id, id, variant_id,
+│                              price_cents BIGINT, stock_qty NUMERIC(14,3), min_stock)
+└─ employee_company  papel por empresa (tenant_id, employee_id, role)
+                     roles: owner | admin | operator-full | operator-sales | viewer
+```
+
+Duas coisas que este schema confirma e que o plano já previa, agora com nome diferente:
+`catalog_lookups` **é** a tabela de apoio genérica (`kind` = `dominio`), e `product_tenant`
+**é** preço e estoque vivendo abaixo da variante, não do produto.
+
+E uma que ele contraria: `employee_company` dá **papel fixo por empresa** (5 valores), não o
+RBAC recurso+ação do plano. Para o bake-off, o papel basta. Para o VITRA real, o RBAC granular
+continua valendo — `employee_company.role` vira o *grupo* a que a pessoa pertence naquela
+empresa, e as permissões seguem penduradas no grupo.
+
+### Nossos entregáveis
+
+Os sete itens abaixo são o que **este repositório** precisa entregar. Os outros dois times
+entregam o equivalente na stack deles; comparabilidade é o único motivo de a lista ser a mesma.
+
+1. Modelos SQLAlchemy 2.0 (`Mapped[]`) das 7 tabelas, **com a chave composta declarada**.
+2. Migração Alembic recriando o schema completo — **incluindo o RLS em SQL cru** — em Postgres
+   descartável. Nunca no banco compartilhado.
+3. **4 testes de isolamento**, no banco local:
+   - gravar preço da empresa A apontando para produto da B → o banco recusa (FK composta);
+   - consulta **sem filtro no código**, com empresa X declarada → só linhas de X;
+   - consulta **sem empresa declarada** → zero linhas, **sem erro** — testando também a conexão
+     que *já teve* empresa antes, que é o caso do pool e onde o `NULLIF` prova seu valor;
+   - a conexão da aplicação não consegue desligar nem burlar a política.
+4. **Teste de concorrência:** dois requests simultâneos de empresas diferentes não se misturam.
+5. **Listagem de produtos server-side** — busca textual, ordenação e paginação no servidor —
+   apontando para o banco compartilhado. Reusa `ListParams` da F0 direto.
+6. **OpenAPI publicado.**
+7. **CI verde:** lint + tipos + testes.
+
+Casos de borda que estão nos dados **de propósito** e a listagem tem que aguentar: produto com
+preço `0`, estoque `0`, e registros `active = false`. ANA SILVA (`ana@grupo.dev`) é `admin` na
+ABACAXI **e** `operator-sales` na UVA — mesma pessoa, papel por empresa; é o caso que prova a
+autorização.
+
+### O que precisamos medir da nossa parte
+
+A comparação entre as três stacks é do Henrique. O que cabe a nós é **preencher a nossa coluna
+com honestidade** — e isso exige anotar durante o trabalho, não reconstruir de memória no fim:
+
+| Critério | Como medir | Anotar quando |
+|---|---|---|
+| Tempo até os 4 testes verdes | horas de sessão | a cada sessão, ao parar |
+| Linhas de código (sem testes) | `cloc` ou `tokei` | no fim, comando único |
+| Clareza da listagem server-side | leitura lado a lado | nada a fazer — é o outro que julga |
+| Atrito com assistente de IA | nº de correções por código alucinado | na hora em que acontece |
+| Salvar pai+filhos (só esboço) | 1 endpoint de grade rascunhado | já existe |
+| Experiência subjetiva | nota 1–5 + 3 linhas de motivo | no fim |
+
+"Atrito com IA" é o único que não dá para recuperar depois: se não for registrado na hora,
+vira chute. Vale um arquivo solto de notas durante a FB.
+
+Empate técnico desempata por: velocidade de entrega das ~20 telas reais, facilidade do ETL de
+importação, ecossistema de IA.
+
+**Dois dos sete itens já estão prontos desde a F0:** "salvar pai+filhos" é o
+`substituir_conjunto`, e "listagem server-side" é o `ListParams`. O trabalho real da FB é o RLS
+— e é justamente onde as três stacks vão divergir mais.
+
+## Retrabalho na F0 já entregue
+
+A F0 foi construída com `empresa_id` em coluna, dinheiro em `Numeric(15,2)` e nomes em
+português. A decisão por RLS muda isso. O que precisa mexer, em ordem de dependência:
+
+| Peça | Mudança |
+|---|---|
+| `app/core/tenancy.py` | **Novo.** `SET LOCAL` no `after_begin` da Connection + `Depends` que resolve a empresa do request |
+| `app/core/db.py` | Registrar o evento na engine; garantir que o usuário de runtime não é dono das tabelas |
+| `app/common/mixins.py` | `EmpresaScopedMixin` → `TenantScopedMixin`, com PK composta `(tenant_id, id)` |
+| `app/common/base_model.py` | `ModeloBase` deixa de assumir PK `id` simples |
+| `app/core/listing.py` | Some `ListingSpec.tem_empresa` e o filtro por `empresa_id` — o banco faz |
+| `app/modules/empresa/` | `Empresa` → `tenants` (tabela global); `filial`/`centro_custo` viram por-empresa |
+| `app/modules/apoio/` | `TabelaApoio` → `catalog_lookups`, `dominio` → `kind` |
+| `app/modules/auth/` | `Usuario` → `employees` (global) + `employee_company` (papel por empresa) |
+| Migrações | O RLS entra em migração própria, em SQL cru, com `FORCE` e as 4 políticas por tabela |
+| Testes | `conftest` passa de banco fixo para Testcontainers; some `create_all`, fica `alembic upgrade` |
+
+**Não é reescrita.** Os cinco mecanismos transversais — apoio genérica, replace-set, lookup,
+`ListParams`, numeração — não dependem de como o recorte por empresa é feito e sobrevivem
+inteiros. O que muda é a camada de identidade e o formato da chave.
 
 ## Fases de implementação
 
@@ -303,6 +546,12 @@ Duas notas de execução, decididas durante a implementação:
   de `create_foreign_key` explícito no fim do `upgrade()`. Pelo mesmo motivo os testes aplicam
   a migração em vez de `Base.metadata.create_all` — senão o schema de teste e o de produção
   divergem sem ninguém perceber. Vale para toda migração das fases seguintes.
+
+**FB — Bake-off.** ⏭ *Próxima.* Entra **entre F0 e F1**: as 7 tabelas com chave composta, RLS
+com as 4 políticas, os 4 testes de isolamento, o de concorrência, listagem server-side contra o
+banco compartilhado, OpenAPI e CI. Carrega junto o retrabalho da seção anterior — não dá para
+fazer os testes de isolamento sem `tenancy.py`. *Entregue quando:* os 4 testes de isolamento
+passam e a listagem responde apontando para o Neon.
 
 **F1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa
@@ -330,9 +579,14 @@ docker compose up -d db
 alembic upgrade head
 python scripts/seed.py          # empresas Vertz/Via HF, apoio, ~50 produtos, clientes, fornecedores
 uvicorn app.main:app --reload   # OpenAPI em /docs
-pytest -q                       # unit + integração contra Postgres de teste
+pytest -q                       # unit + integração; sobe Postgres descartável (Testcontainers)
 pytest tests/e2e -q             # fluxo ponta a ponta
 ```
+
+O `pytest` **não** usa mais o banco do docker-compose: cada execução sobe um Postgres
+descartável e aplica as migrações, RLS incluído. É o único jeito de testar política de
+segurança sem deixar resíduo — e de garantir que o RLS realmente está na migração, não só
+no banco de alguém.
 
 O teste e2e que define "pronto" — é o fluxo real da Vertz:
 
@@ -347,7 +601,9 @@ O teste e2e que define "pronto" — é o fluxo real da Vertz:
 7. cancelar o orçamento → conferir que ele **não sumiu**, só mudou de status
 
 Testes de concorrência à parte: duas saídas simultâneas da mesma variante não podem deixar saldo
-negativo; dois orçamentos criados em paralelo na mesma série não podem repetir número.
+negativo; dois orçamentos criados em paralelo na mesma série não podem repetir número; e dois
+requests simultâneos **de empresas diferentes** não podem se misturar — este último é o teste
+que o RLS torna possível escrever e que o desenho antigo não tinha como provar.
 
 ## Dívida assumida e lacunas
 
@@ -370,5 +626,19 @@ quando houver novas capturas:
   conceitos: `obra_id` para obra, `profissional_externo_id` para o arquiteto. **A migração de
   dados vai precisar decidir para onde vai cada valor legado.**
 - `VIA HF ILUMINAÇÃO` aparece como fornecedor de um pedido — uma empresa do grupo vende para a
-  outra. O `empresa_id` + `fornecedor_empresa` suportam isso, mas se for **transferência entre
-  empresas** com regra própria, precisa confirmação.
+  outra. `fornecedor_empresa` suporta isso, mas se for **transferência entre empresas** com
+  regra própria, precisa confirmação. **Com RLS isso fica mais delicado:** uma operação que
+  precisa enxergar as duas empresas na mesma transação não tem como, por construção. O caminho
+  é modelar como duas operações espelhadas (saída em A, entrada em B), cada uma na sua
+  transação, ligadas por um identificador comum — nunca afrouxando a política.
+
+**Aberto pelo bake-off, a decidir quando ele terminar:**
+- **Papel fixo × RBAC granular.** `employee_company.role` tem 5 valores; o plano prevê
+  permissões recurso+ação. A ponte proposta (papel = grupo, permissões no grupo) precisa ser
+  validada contra o que as ~20 telas realmente exigem.
+- **Migração de `Numeric(15,2)` para centavos.** A F0 já gravou `limite_desconto_pct` e o
+  modelo previa dinheiro em `Numeric`. Nada em produção ainda, então a conversão é barata
+  agora e cara depois — é motivo para não adiar a virada.
+- **Onde a empresa ativa vem no request.** JWT, header ou path. O bake-off não decide; o VITRA
+  precisa, e a escolha muda o `Depends` de `tenancy.py`. Recomendação: claim no JWT, com header
+  só para usuário que opera nas duas empresas (o caso da ANA SILVA).
