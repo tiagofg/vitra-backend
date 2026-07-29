@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.common.base_service import BaseService
 from app.core.errors import Conflito, RegraDeNegocio
-from app.core.listing import ListingSpec, LookupItem
+from app.core.listing import ListingSpec, LookupItem, contem_sem_acento
 from app.modules.empresa.models import CentroCusto, Empresa, Filial
 from app.modules.empresa.schemas import (
     CentroCustoAtualizar,
@@ -42,11 +42,10 @@ class EmpresaService(BaseService[Empresa, EmpresaCriar, EmpresaAtualizar]):
     async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
         stmt = select(Empresa).where(Empresa.ativo.is_(True))
         if q:
-            padrao = f"%{q}%"
             stmt = stmt.where(
-                Empresa.razao_social.ilike(padrao)
-                | Empresa.nome_fantasia.ilike(padrao)
-                | Empresa.codigo.ilike(padrao)
+                contem_sem_acento(Empresa.razao_social, q)
+                | contem_sem_acento(Empresa.nome_fantasia, q)
+                | contem_sem_acento(Empresa.codigo, q)
             )
         stmt = stmt.order_by(Empresa.codigo).limit(limite)
         return [

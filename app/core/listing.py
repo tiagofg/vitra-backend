@@ -7,7 +7,7 @@ from typing import Any, Generic, Literal, TypeVar
 
 from fastapi import Query
 from pydantic import BaseModel
-from sqlalchemy import Select, asc, desc, func, or_, select
+from sqlalchemy import ColumnElement, Select, asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
@@ -49,6 +49,16 @@ class ListParams:
         return (self.pagina - 1) * self.tamanho
 
 
+def contem_sem_acento(coluna: Any, texto: str) -> ColumnElement[bool]:
+    """`ILIKE %texto%` ignorando acento — 'sao' encontra 'São Paulo'.
+
+    Quem digita num `[busca +...]` não põe acento. `vitra_unaccent` é o wrapper IMMUTABLE
+    criado na migração `0402c7bf6bee`; normalizar os dois lados é o que faz o casamento
+    funcionar nos dois sentidos ('são' também encontra 'Sao').
+    """
+    return func.vitra_unaccent(coluna).ilike(func.vitra_unaccent(f"%{texto}%"))
+
+
 @dataclass(frozen=True)
 class ListingSpec:
     """Declara, por recurso, o que é buscável e o que é ordenável. Whitelist explícita:
@@ -76,9 +86,13 @@ def aplicar_listagem(stmt: Select[Any], params: ListParams, spec: ListingSpec) -
     model = spec.model
 
     if params.busca and spec.campos_busca:
-        padrao = f"%{params.busca}%"
         stmt = stmt.where(
-            or_(*[getattr(model, campo).ilike(padrao) for campo in spec.campos_busca])
+            or_(
+                *[
+                    contem_sem_acento(getattr(model, campo), params.busca)
+                    for campo in spec.campos_busca
+                ]
+            )
         )
 
     if params.busca_codigo and spec.campo_codigo:

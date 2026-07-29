@@ -46,7 +46,7 @@ o projeto caber:
 |---|---|
 | `[combo +...]` — 19 ocorrências | **Uma** tabela de apoio genérica com discriminador `dominio` + um router CRUD genérico. Não 19 tabelas. |
 | GRADE editável — 10 ocorrências | Coleções filhas com *replace-set* transacional no PUT do pai (diff por PK, não delete-all/insert-all). |
-| `[busca +...]` / F4/F5/F6 — 10 ocorrências | Endpoints `/lookup` padronizados: `q`, `limit`, retorno `{id, codigo, label, extras}`. |
+| `[busca +...]` / F4/F5/F6 — 10 ocorrências | Endpoints `/lookup` padronizados: `q`, `limit`, retorno `{id, codigo, label, extras}`. Busca **insensível a acento** — quem digita não põe acento. |
 | Listagem com barra de 7 ações — 3 telas | Um `ListParams` comum: `busca_codigo`, filtros, ordenação, paginação. `Excluir` vira `DELETE`; `Cancelar` vira `POST /{id}/cancelar`. |
 | Documento cabeçalho+itens+totais — 3 telas | Classe base de documento: numeração série+número, máquina de estados, recálculo de totais no serviço, nunca no cliente. |
 
@@ -56,7 +56,7 @@ resolvem-se por mixins e por `empresa_id`.
 ## Stack
 
 - Python 3.12, **FastAPI**, **SQLAlchemy 2.0 async** (`Mapped[...]` / `mapped_column`), asyncpg
-- PostgreSQL 16, **Alembic** para migrações
+- PostgreSQL 16, **Alembic** para migrações, extensão `unaccent` para busca sem acento
 - Pydantic v2 (`pydantic-settings` para config)
 - `argon2-cffi` para senha, JWT via `pyjwt`
 - pytest + pytest-asyncio + httpx.AsyncClient, banco de teste em container
@@ -67,6 +67,9 @@ resolvem-se por mixins e por `empresa_id`.
 - percentual: `Numeric(9, 4)` — o total do orçamento mostra `Desconto 0,0010 %`, são 4 casas
 - quantidade: `Numeric(15, 4)` — unidade de entrada ≠ unidade de saída, com fator
 - toda tabela: `id` UUID, `criado_em`, `atualizado_em`, `criado_por_id`
+- toda busca textual (`?busca=` e `/lookup?q=`) passa por `vitra_unaccent` nos **dois** lados,
+  para `sao` achar `São Paulo` e `são` achar `Sao`. É wrapper `IMMUTABLE` sobre `unaccent()`,
+  justamente para poder virar índice funcional quando o volume pedir
 
 ## Estrutura de diretórios
 
@@ -285,10 +288,21 @@ Toda rota mutante passa por `Depends(require("recurso", "acao"))`.
 
 ## Fases de implementação
 
-**F0 — Fundação.** Projeto, docker-compose, config, sessão async, Alembic, `main.py`,
-handlers de erro, `ListParams`, mixins, serviço de numeração, auth JWT + RBAC granular,
-`empresa`/`filial`, tabela de apoio genérica + `cidade`/`banco`. Uma migração inicial.
+**F0 — Fundação.** ✅ *Entregue.* Projeto, docker-compose, config, sessão async, Alembic,
+`main.py`, handlers de erro, `ListParams`, mixins, `substituir_conjunto` (replace-set das
+grades), serviço de numeração, auth JWT + RBAC granular, `empresa`/`filial`/`centro_custo`,
+tabela de apoio genérica + `cidade`/`uf`/`banco`, busca sem acento.
 *Entregue quando:* login funciona, `/apoio/{dominio}` cria e lista, permissão bloqueia rota.
+
+Duas notas de execução, decididas durante a implementação:
+
+- A tabela `autorizacao_documento` **entra já na migração inicial**, sem endpoints. O serviço
+  que a consome é da F4; antecipar só a tabela evita uma migração extra e não custa nada.
+- As FKs de `criado_por_id` fecham o ciclo `usuario → empresa → cidade → uf → usuario` e usam
+  `use_alter`. O `op.create_table` do Alembic **descarta essas FKs em silêncio**: elas precisam
+  de `create_foreign_key` explícito no fim do `upgrade()`. Pelo mesmo motivo os testes aplicam
+  a migração em vez de `Base.metadata.create_all` — senão o schema de teste e o de produção
+  divergem sem ninguém perceber. Vale para toda migração das fases seguintes.
 
 **F1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa

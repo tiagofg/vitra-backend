@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.base_service import BaseService
 from app.core.errors import Conflito, NaoEncontrado
-from app.core.listing import ListingSpec, LookupItem
+from app.core.listing import ListingSpec, LookupItem, contem_sem_acento
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf
 from app.modules.apoio.schemas import (
     ApoioAtualizar,
@@ -96,9 +96,9 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
     ) -> list[LookupItem]:
         stmt = self._stmt_base().where(TabelaApoio.ativo.is_(True))
         if q:
-            padrao = f"%{q}%"
             stmt = stmt.where(
-                TabelaApoio.descricao.ilike(padrao) | TabelaApoio.codigo.ilike(padrao)
+                contem_sem_acento(TabelaApoio.descricao, q)
+                | contem_sem_acento(TabelaApoio.codigo, q)
             )
         if empresa_id is not None:
             # Valores globais (empresa_id nulo) sempre aparecem.
@@ -158,7 +158,7 @@ class CidadeService(BaseService[Cidade, CidadeCriar, CidadeAtualizar]):
     async def lookup(self, q: str | None, limite: int, uf: str | None) -> list[LookupItem]:
         stmt = select(Cidade).join(Uf)
         if q:
-            stmt = stmt.where(Cidade.nome.ilike(f"%{q}%"))
+            stmt = stmt.where(contem_sem_acento(Cidade.nome, q))
         if uf:
             stmt = stmt.where(Uf.sigla == uf.upper())
         stmt = stmt.order_by(Cidade.nome).limit(limite)
@@ -186,8 +186,7 @@ class BancoService(BaseService[Banco, BancoCriar, BancoAtualizar]):
     async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
         stmt = select(Banco).where(Banco.ativo.is_(True))
         if q:
-            padrao = f"%{q}%"
-            stmt = stmt.where(Banco.nome.ilike(padrao) | Banco.codigo.ilike(padrao))
+            stmt = stmt.where(contem_sem_acento(Banco.nome, q) | contem_sem_acento(Banco.codigo, q))
         stmt = stmt.order_by(Banco.codigo).limit(limite)
         return [
             LookupItem(id=b.id, codigo=b.codigo, label=f"{b.codigo} - {b.nome}")

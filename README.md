@@ -15,6 +15,7 @@ sobre PostgreSQL 16. O plano completo está em [`plano-backend-vitra.md`](plano-
 | RBAC granular recurso+ação | `app/core/permissions.py` |
 | Mixins de endereço, contatos, redes sociais, empresa | `app/common/mixins.py` |
 | *Replace-set* das GRADEs editáveis (diff por PK) | `app/common/child_set.py` |
+| Busca sem acento (`vitra_unaccent`, wrapper `IMMUTABLE`) | `app/core/listing.py` |
 | Auth JWT (access + refresh), argon2 | `app/modules/auth/` |
 | Empresa, filial, centro de custo | `app/modules/empresa/` |
 | Tabela de apoio genérica (19 combos) + cidade/banco/UF | `app/modules/apoio/` |
@@ -61,6 +62,8 @@ numeração abre transações reais de propósito.
 - **Toda rota mutante** passa por `Depends(require(recurso, acao))`, e o par precisa estar no
   catálogo de `app/core/permissions.py` — errar o nome estoura na importação, não em produção.
 - **`ordenar_por` é whitelist** por recurso, declarada no `ListingSpec`.
+- **Busca textual ignora acento** — use `contem_sem_acento()` de `app/core/listing.py`, nunca
+  `.ilike()` cru: `?busca=sao` precisa achar "São Paulo".
 
 ## Fora de escopo (decisão registrada no plano)
 
