@@ -385,13 +385,13 @@ Fatos estruturais que a listagem 7.3 revela e que o modelo obedece:
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/alterar-senha`, `GET /auth/eu` |
 | Acesso | CRUD `/grupos`, `/usuarios`, `GET/PUT /grupos/{id}/permissoes` |
-| Apoio | `GET|POST /apoio/{dominio}`, `GET /cidades/lookup`, `GET /bancos/lookup` |
+| Apoio | `GET` e `POST /apoio/{dominio}`, `GET /cidades/lookup`, `GET /bancos/lookup` |
 | Cadastros | CRUD + `/lookup` para clientes, fornecedores, colaboradores, profissionais-externos, transportadoras |
 | Produtos | CRUD `/produtos`, subrecursos `/variantes`, `/fornecedores`, `/grupos-relacionados`, `GET /produtos/lookup` |
 | Estoque | `GET /estoque/saldos`, `POST /estoque/movimentos`, `POST /estoque/transferencias`, `POST /estoque/reservas` |
 | Vendas | CRUD `/orcamentos` (+ `/itens`, `/ambientes`), `POST /{id}/cancelar`, `POST /{id}/fechar`, `POST /{id}/revisar`, `POST /{id}/desconto-grupo` |
 | Compras | CRUD `/pedidos-compra`, `/ordens-compra`, `POST /ordens-compra/{id}/receber` |
-| Autorizações | `POST /autorizacoes`, `POST /autorizacoes/{id}/aprovar|rejeitar` |
+| Autorizações | `POST /autorizacoes`, `POST /autorizacoes/{id}/aprovar` e `/rejeitar` |
 
 Todas as listagens aceitam `?busca=&pagina=&tamanho=&ordenar_por=&ordem=&ativo=`. **`empresa_id`
 sai da query string**: a empresa vem da transação (RLS), não de um parâmetro que o cliente
