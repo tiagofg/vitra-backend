@@ -6,6 +6,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from app.core.deps import Sessao, UsuarioAtual
+from app.core.errors import (
+    CONFLITO,
+    NAO_AUTENTICADO,
+    NAO_ENCONTRADO,
+    REGRA_DE_NEGOCIO,
+    pode_falhar,
+)
 from app.core.listing import ListParams, Pagina
 from app.core.permissions import Acao, require
 from app.modules.auth.models import Usuario
@@ -37,6 +44,7 @@ router_permissoes = APIRouter(prefix="/permissoes", tags=["acesso"])
 
 
 @router_auth.post("/login", response_model=TokenSaida)
+@pode_falhar(NAO_AUTENTICADO)
 async def login(dados: LoginEntrada, session: Sessao) -> TokenSaida:
     service = AuthService(session)
     usuario = await service.autenticar(dados.login, dados.senha)
@@ -44,11 +52,13 @@ async def login(dados: LoginEntrada, session: Sessao) -> TokenSaida:
 
 
 @router_auth.post("/refresh", response_model=TokenSaida)
+@pode_falhar(NAO_AUTENTICADO)
 async def refresh(dados: RefreshEntrada, session: Sessao) -> TokenSaida:
     return await AuthService(session).renovar(dados.refresh_token)
 
 
 @router_auth.post("/alterar-senha", status_code=status.HTTP_204_NO_CONTENT)
+@pode_falhar(REGRA_DE_NEGOCIO)
 async def alterar_senha(dados: AlterarSenhaEntrada, session: Sessao, usuario: UsuarioAtual) -> None:
     await AuthService(session).alterar_senha(usuario, dados.senha_atual, dados.senha_nova)
 
@@ -81,6 +91,7 @@ async def listar_grupos(
 
 
 @router_grupos.post("", response_model=GrupoSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_grupo(
     dados: GrupoCriar,
     session: Sessao,
@@ -91,6 +102,7 @@ async def criar_grupo(
 
 
 @router_grupos.get("/{grupo_id}", response_model=GrupoSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_grupo(
     grupo_id: uuid.UUID,
     session: Sessao,
@@ -100,6 +112,7 @@ async def obter_grupo(
 
 
 @router_grupos.put("/{grupo_id}", response_model=GrupoSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_grupo(
     grupo_id: uuid.UUID,
     dados: GrupoAtualizar,
@@ -111,6 +124,7 @@ async def atualizar_grupo(
 
 
 @router_grupos.delete("/{grupo_id}", response_model=GrupoSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def desativar_grupo(
     grupo_id: uuid.UUID,
     session: Sessao,
@@ -122,6 +136,7 @@ async def desativar_grupo(
 
 
 @router_grupos.get("/{grupo_id}/permissoes", response_model=list[PermissaoSaida])
+@pode_falhar(NAO_ENCONTRADO)
 async def listar_permissoes_do_grupo(
     grupo_id: uuid.UUID,
     session: Sessao,
@@ -132,6 +147,7 @@ async def listar_permissoes_do_grupo(
 
 
 @router_grupos.put("/{grupo_id}/permissoes", response_model=GrupoSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def definir_permissoes_do_grupo(
     grupo_id: uuid.UUID,
     dados: PermissoesGrupoEntrada,
@@ -157,6 +173,7 @@ async def listar_usuarios(
 
 
 @router_usuarios.post("", response_model=UsuarioSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def criar_usuario(
     dados: UsuarioCriar,
     session: Sessao,
@@ -167,6 +184,7 @@ async def criar_usuario(
 
 
 @router_usuarios.get("/{usuario_id}", response_model=UsuarioSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_usuario(
     usuario_id: uuid.UUID,
     session: Sessao,
@@ -176,6 +194,7 @@ async def obter_usuario(
 
 
 @router_usuarios.put("/{usuario_id}", response_model=UsuarioSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_usuario(
     usuario_id: uuid.UUID,
     dados: UsuarioAtualizar,
@@ -187,6 +206,7 @@ async def atualizar_usuario(
 
 
 @router_usuarios.post("/{usuario_id}/senha", status_code=status.HTTP_204_NO_CONTENT)
+@pode_falhar(NAO_ENCONTRADO)
 async def redefinir_senha(
     usuario_id: uuid.UUID,
     dados: UsuarioSenhaEntrada,
@@ -197,6 +217,7 @@ async def redefinir_senha(
 
 
 @router_usuarios.delete("/{usuario_id}", response_model=UsuarioSaida)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
 async def desativar_usuario(
     usuario_id: uuid.UUID,
     session: Sessao,

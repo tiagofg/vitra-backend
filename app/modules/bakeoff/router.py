@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 
 from app.core.deps import Sessao, UsuarioAtual
+from app.core.errors import CONFLITO, pode_falhar
 from app.core.listing import ListParams, Pagina
 from app.modules.bakeoff.deps import EmpresaDoPedido, SessaoEmpresa
 from app.modules.bakeoff.models import ColaboradorEmpresa, Empresa
@@ -51,6 +52,7 @@ async def listar_produtos(
 
 
 @router_produtos.post("", response_model=ProdutoSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_produto(
     dados: ProdutoCriar,
     session: SessaoEmpresa,

@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from app.core.deps import UsuarioAtual
-from app.core.errors import SemPermissao
+from app.core.errors import Falha, SemPermissao, pode_falhar
 from app.modules.auth.models import Usuario
 
 
@@ -52,6 +52,19 @@ def require(recurso: str, acao: Acao | str) -> Callable[[Usuario], Coroutine[Any
     if (recurso, acao_str) not in pares_do_catalogo():
         raise KeyError(f"Permissão '{recurso}:{acao_str}' não está no catálogo.")
 
+    # A falha é montada aqui, e não uma vez no módulo, porque cada rota tem o seu par: o
+    # contrato de `POST /grupos` mostra `grupo:criar` no exemplo, não um 403 genérico. É a
+    # mesma dependência que exige a permissão e que a documenta — não dá para acrescentar
+    # uma sem a outra.
+    falha = Falha(
+        status=SemPermissao.http_status,
+        codigo=SemPermissao.codigo,
+        descricao=f"Usuário autenticado sem a permissão '{recurso}:{acao_str}'.",
+        mensagem=f"Usuário não tem permissão de '{acao_str}' sobre '{recurso}'.",
+        campos={"recurso": recurso, "acao": acao_str},
+    )
+
+    @pode_falhar(falha)
     async def _verificar(usuario: UsuarioAtual) -> Usuario:
         if not usuario.pode(recurso, acao_str):
             raise SemPermissao(recurso, acao_str)

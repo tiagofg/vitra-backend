@@ -28,11 +28,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Sessao, UsuarioAtual
-from app.core.tenancy import EmpresaNaoDeclarada, SemVinculoComEmpresa, declarar_empresa
+from app.core.errors import pode_falhar
+from app.core.tenancy import (
+    EMPRESA_NAO_DECLARADA,
+    SEM_VINCULO_COM_EMPRESA,
+    EmpresaNaoDeclarada,
+    SemVinculoComEmpresa,
+    declarar_empresa,
+)
 from app.modules.auth.models import Usuario
 from app.modules.bakeoff.models import Colaborador, ColaboradorEmpresa, Empresa
 
 
+@pode_falhar(EMPRESA_NAO_DECLARADA, SEM_VINCULO_COM_EMPRESA)
 async def empresa_do_pedido(
     session: Sessao,
     usuario: UsuarioAtual,

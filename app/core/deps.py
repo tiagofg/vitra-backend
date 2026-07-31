@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.core.errors import NaoAutenticado
+from app.core.errors import NAO_AUTENTICADO, NaoAutenticado, pode_falhar
 from app.core.security import ler_token
 from app.modules.auth.models import Usuario
 
@@ -21,6 +21,7 @@ Sessao = Annotated[AsyncSession, Depends(get_session)]
 _bearer = HTTPBearer(auto_error=False, description="Token JWT obtido em POST /auth/login")
 
 
+@pode_falhar(NAO_AUTENTICADO)
 async def usuario_atual(
     session: Sessao,
     credencial: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import config
 from app.core.db import engine
 from app.core.errors import registrar_handlers
+from app.core.openapi import documentar_erros
 from app.modules.apoio.router import routers as routers_apoio
 from app.modules.auth.router import routers as routers_auth
 from app.modules.bakeoff.router import routers as routers_bakeoff
@@ -63,6 +64,9 @@ def criar_app() -> FastAPI:
     @app.get("/saude", tags=["infra"])
     async def saude() -> dict[str, str]:
         return {"status": "ok", "ambiente": config.ambiente}
+
+    # Depois das rotas: a leitura das falhas percorre o grafo de dependências já montado.
+    documentar_erros(app)
 
     return app
 
