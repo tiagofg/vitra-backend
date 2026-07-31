@@ -113,6 +113,23 @@ não aparece em "linhas do `tenancy.py`". Se os outros dois protótipos declarar
 por header sem verificar vínculo, estarão medindo a mesma metade que eu medi primeiro — e a
 coluna de linhas de código estará comparando entregas diferentes.
 
+**Ressalva de latência, se a comparação incluir tempo de resposta.** A checagem de vínculo
+custa uma consulta a mais por request, `GET /produtos` incluído — que é justamente o
+endpoint que o bake-off cronometra. Ela faz `lower(employees.email)`, o que impede o uso do
+índice único da coluna e força varredura:
+
+```
+com lower()   Seq Scan on employees        (cost=0.00..11.65)
+coluna crua   Index Scan using uq_employees_email  (cost=0.14..8.16)
+```
+
+Fica assim de propósito. A correção seria um índice funcional em `lower(email)`, e
+`employees` faz parte do schema **fixo** do banco compartilhado, onde a regra é não criar
+índice. Criá-lo só na migração local resolveria o número e estragaria a medida: mediríamos
+um schema que o Neon não tem. A tabela é pequena — pessoas do grupo, não documentos —,
+então o custo real é ruído; o que não seria ruído é comparar latência sem que os três
+protótipos façam a mesma checagem. **No VITRA real, onde o schema é nosso, o índice entra.**
+
 ## O confundidor
 
 Este protótipo é **FastAPI cru**, sem `advanced-alchemy`. Comparar isto contra
