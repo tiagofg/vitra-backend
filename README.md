@@ -1,11 +1,12 @@
 # VITRA — Backend
 
 Substituto do SoftLux 1.0.2.1521 para a Vertz. Python 3.12 + FastAPI + SQLAlchemy 2.0 async
-sobre PostgreSQL 16. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md).
+sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md).
 
-**Estado: F0 (Fundação) entregue.** As demais fases estão descritas no plano.
+**Estado: S0 (Fundação) e SB (Bake-off) entregues.** As demais fases estão no plano.
+As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bakeoff.md).
 
-## O que a F0 entrega
+## O que a S0 entrega
 
 | Bloco | Onde |
 |---|---|
@@ -20,18 +21,74 @@ sobre PostgreSQL 16. O plano completo está em [`plano-backend-vitra.md`](plano-
 | Empresa, filial, centro de custo | `app/modules/empresa/` |
 | Tabela de apoio genérica (19 combos) + cidade/banco/UF | `app/modules/apoio/` |
 
-Os cinco mecanismos transversais do plano existem e estão testados — é o que faz F1–F5
-serem, em boa parte, composição em vez de código novo.
+## O que a SB entrega
+
+| Bloco | Onde |
+|---|---|
+| As 7 tabelas do schema compartilhado, PK composta `(tenant_id, id)` | `app/modules/bakeoff/models.py` |
+| `SET LOCAL app.current_tenant` no `after_begin` + `Depends` da empresa | `app/core/tenancy.py` |
+| Migração das 7 tabelas + RLS em SQL cru (4 políticas por tabela) | `alembic/versions/a1b2c3d4e5f6_*.py` |
+| 4 testes de isolamento, contra Postgres real e como papel de runtime | `tests/test_rls_isolamento.py` |
+| Concorrência: pedidos simultâneos de empresas diferentes | `tests/test_bakeoff_concorrencia.py` |
+| Listagem de produtos server-side (busca, ordenação, paginação) | `app/modules/bakeoff/service.py` |
+| A mesma listagem contra o Neon compartilhado (opcional) | `tests/test_bakeoff_neon.py` |
+| OpenAPI publicado | `make openapi` → `openapi.json` |
+
+## Multiempresa: quem recorta é o banco
+
+O recorte entre empresas **não** é um `WHERE empresa_id = ...` que alguém pode esquecer. Toda
+tabela por empresa tem `FORCE ROW LEVEL SECURITY` e quatro políticas sobre o mesmo predicado;
+a transação declara a empresa ativa e o Postgres faz o resto.
+
+Três consequências que mudam como se lê e se escreve o código aqui:
+
+- **O serviço não escreve filtro de empresa.** Se você viu um `WHERE tenant_id` numa query,
+  ou é bug ou é tabela global. Ver `app/modules/bakeoff/service.py`.
+- **Esquecer a empresa dá listagem vazia, nunca dado da empresa errada.** É a propriedade que
+  se está comprando. Em troca, "voltou vazio do nada" vira sintoma comum em desenvolvimento —
+  e a primeira hipótese é sempre a mesma: faltou declarar a empresa. Nas rotas, isso falha
+  com `400` na borda em vez de devolver lista vazia.
+- **A aplicação nunca conecta como dono do banco.** `vitra` roda as migrações; `vitra_runtime`
+  roda a API, sem ser dono e sem `BYPASSRLS`. Conectar como dono ou superusuário faz o
+  Postgres ignorar as políticas, e aí o RLS é decorativo.
+
+### Declarar não é autorizar
+
+As rotas por empresa pedem token **e** o cabeçalho `X-Empresa-Id`, nesta ordem de checagem
+(`app/modules/bakeoff/deps.py`):
+
+| Pergunta | Falha com |
+|---|---|
+| Quem é? | `401` sem token |
+| Qual empresa? | `400` sem `X-Empresa-Id` |
+| Pode essa empresa? | `403` sem vínculo em `employee_company` |
+
+A terceira não é redundante com o RLS — é o que separa duas defesas diferentes:
+
+- o **RLS** entrega imunidade a `WHERE` esquecido no serviço;
+- a **borda HTTP** entrega imunidade a chamador malicioso.
+
+Sem a checagem de vínculo, o encadeamento seria *RLS confia no GUC → GUC confia no cabeçalho
+→ cabeçalho vem do cliente*: a política do Postgres protegeria um recorte escolhido por quem
+chama. A checagem roda **sob a própria política** — a empresa é declarada antes, então a
+consulta a `employee_company` já sai recortada, sem filtro escrito à mão.
+
+Para o VITRA real a recomendação é *claim no JWT*, com o cabeçalho sobrevivendo só para quem
+opera em mais de uma empresa (o caso da ANA SILVA). A decisão está aberta no plano e está
+concentrada numa função só, para que a troca seja barata.
 
 ## Subir o ambiente
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 cp .env.example .env
+make hooks                        # hooks de pre-commit — uma vez por clone
 
-docker compose up -d db          # Postgres em localhost:5433 (cria vitra e vitra_teste)
-.venv/bin/alembic upgrade head
-.venv/bin/python scripts/seed.py # permissões, UFs, empresas, usuário admin
+docker compose up -d db           # Postgres 17 de desenvolvimento, em localhost:5433
+.venv/bin/alembic upgrade head    # roda como dono (VITRA_DATABASE_URL_ADMIN)
+make runtime                      # põe vitra_runtime no papel vitra_app — uma vez por banco
+.venv/bin/python scripts/seed.py          # permissões, UFs, empresas, usuário admin
+.venv/bin/python scripts/seed_bakeoff.py  # 2 empresas × 200 produtos das 7 tabelas
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -40,24 +97,106 @@ OpenAPI em <http://localhost:8000/docs>. O seed cria `admin` / `admin12345` — 
 Se o `docker` pedir permissão, ou você entra no grupo (`sudo usermod -aG docker $USER`, exige
 relogar) ou roda com `sudo docker compose up -d db`.
 
+### O banco compartilhado do bake-off
+
+`vitra_bakeoff` (PostgreSQL 17 no Neon) é usado **ao mesmo tempo** pelos devs das outras duas
+stacks. Daí as regras não serem burocracia:
+
+- **Não criar, alterar ou apagar tabela lá.** A estrutura é fixa. A migração se testa
+  localmente, em Postgres descartável, recriando a mesma estrutura.
+- **Nenhum teste escreve lá.** A suíte roda local; contra o Neon vai só a listagem, que é
+  leitura. Um teste que suja o dado sujou para os outros dois times.
+- A string de conexão traz senha real e vive **só no `.env`**. O `.env.example` documenta a
+  variável (`VITRA_BAKEOFF_DATABASE_URL`), nunca o valor. Sem ela, os testes do Neon são
+  pulados — é o caso do CI.
+- O Neon suspende o banco após alguns minutos ocioso: a primeira conexão depois disso leva
+  1–2 s. Não é queda.
+- Bagunçou o dado: avisar o Henrique, que reseta em ~1 min.
+
+## Qualidade — pre-commit e CI
+
+O CI (`.github/workflows/ci.yml`) roda **os mesmos hooks** do pre-commit, pela mesma
+configuração. Não é uma segunda lista de comandos parecida: duas listas divergem, e o dia em
+que divergirem o CI vai reprovar código que o hook local acabou de aprovar — que é o jeito
+mais rápido de ensinar o time a usar `--no-verify`.
+
+```bash
+make hooks       # instala os hooks (uma vez por clone)
+make qualidade   # roda todos eles em todos os arquivos, igual ao CI
+make checar      # qualidade + suíte + ida e volta das migrações
+```
+
+| Quando | O que roda |
+|---|---|
+| `commit` | higiene de arquivo, ruff (check + format), mypy, gitleaks, cabeça única do Alembic |
+| `commit-msg` | Conventional Commits |
+| `push` | a suíte inteira (sobe Postgres, ~35 s) |
+
+`pytest` fora do commit é decisão: um hook de 35 s a cada commit ensina o time a pular o
+hook, e aí nenhum deles roda. No push o custo é aceitável e a proteção é a mesma.
+
+**ruff e mypy são hooks `local`**, rodando as ferramentas do próprio ambiente do projeto, em
+vez do `astral-sh/ruff-pre-commit`. Dois motivos: o `rev` do hook e o pin do
+`pyproject.toml` são dois lugares que divergem no dia em que alguém atualiza um e esquece o
+outro — e um bump de patch do ruff reformata a árvore inteira; e o mypy precisa das
+dependências instaladas, senão não enxerga os stubs do SQLAlchemy nem o plugin do Pydantic e
+passa a aprovar o que o CI reprova. Por isso `ruff` e `mypy` vão **pinados** no
+`pyproject.toml`, enquanto o resto usa piso.
+
+Quatro jobs no CI, cada um cobrindo uma falha diferente:
+
+| Job | O que pega |
+|---|---|
+| `qualidade` | tudo que o pre-commit pega, para quem passou `--no-verify` |
+| `testes` | a suíte, com Postgres 17 descartável e migrações aplicadas |
+| `migracoes` | cabeça única e **ida → volta → ida**: o `downgrade` que esquece de apagar política ou tipo `ENUM` só falha na segunda ida |
+| `contrato` | `openapi.json` desatualizado no repositório — é por ele que o front gera o cliente |
+
+## Dependências
+
+Pisos alinhados à última estável, com `ruff` e `mypy` pinados. O Dependabot
+(`.github/dependabot.yml`) abre PR semanal do ferramental e mensal do runtime, das actions,
+da imagem do Postgres e dos hooks de terceiros — dependência não envelhece por esquecimento.
+
+```bash
+make atualizar   # sobe tudo para a última estável e reconfere
+```
+
 ## Testes
 
 ```bash
 .venv/bin/pytest -q
 ```
 
-Rodam contra o banco `vitra_teste` (criado pelo `scripts/init-db.sql` no primeiro start do
-container). Cada teste roda dentro de uma transação desfeita no fim; o teste de concorrência da
-numeração abre transações reais de propósito.
+Cada execução **sobe um Postgres 17 descartável** (Testcontainers) e aplica as migrações,
+RLS incluído. É o único jeito de testar política de segurança sem deixar resíduo — e de
+garantir que o RLS está *na migração*, não só no banco de alguém. `Base.metadata.create_all`
+não serviria: ele não cria política nenhuma, e a suíte de isolamento inteira passaria contra
+um banco sem trava.
+
+Os testes de isolamento conectam como **papel de runtime**, não como dono. Rodá-los como dono
+ou superusuário faz os quatro passarem sem provar nada.
+
+Precisa de Docker. Para iterar sem subir container a cada rodada, aponte
+`VITRA_TESTE_URL_EXTERNA` para um Postgres já de pé — o schema continua sendo recriado a
+partir das migrações.
 
 ## Convenções que valem para todas as fases
 
 - **Router só orquestra.** Regra de negócio no service; nenhum `select()` em router.
-- **Dinheiro** `Numeric(15,2)`, **percentual** `Numeric(9,4)`, **quantidade** `Numeric(15,4)`.
-  Nunca `float`.
-- **Toda tabela** tem `id` UUID, `criado_em`, `atualizado_em`, `criado_por_id`.
+- **Tabela por empresa tem PK composta `(tenant_id, id)`**, e toda FK entre tabelas por
+  empresa carrega o `tenant_id` junto. É o que torna *fisicamente impossível* ligar o preço
+  da empresa A ao produto da empresa B — o `INSERT` falha, não é validação de serviço.
+- **Nome de tabela e de coluna em inglês** (o schema compartilhado é fixo e é assim); classe
+  ORM, serviço, rota e mensagem de erro **em português**, que é a língua do domínio.
+- **Dinheiro é `BIGINT` em centavos** (`price_cents`): R$ 12,34 é `1234`. Nunca float, nunca
+  `Numeric`. Converter para reais é da borda que apresenta, nunca do banco.
+  *(As tabelas da S0 ainda usam `Numeric(15,2)`; a conversão está no retrabalho pendente.)*
+- **Quantidade** `Numeric(14,3)` com `CHECK >= 0`; **percentual** `Numeric(9,4)`.
+- **CNPJ/CPF** `varchar(14)`, caixa alta e **sem máscara** — já pronto para o CNPJ
+  alfanumérico, que vale a partir de 31/07/2026.
 - **Cadastro não se apaga** — `DELETE /recurso/{id}` desativa (`ativo = false`). Documentos de
-  venda vão **cancelar** (`POST /{id}/cancelar`), a partir da F4.
+  venda vão **cancelar** (`POST /{id}/cancelar`), a partir da S4.
 - **Erro sai sempre no mesmo envelope**: `{"erro": {"codigo", "mensagem", "campos"}}`.
 - **Toda rota mutante** passa por `Depends(require(recurso, acao))`, e o par precisa estar no
   catálogo de `app/core/permissions.py` — errar o nome estoura na importação, não em produção.
@@ -67,5 +206,5 @@ numeração abre transações reais de propósito.
 
 ## Fora de escopo (decisão registrada no plano)
 
-Sem motor fiscal e sem NFe — `ncm`/`cest`/`origem` serão apenas gravados no produto (F2).
+Sem motor fiscal e sem NFe — `ncm`/`cest`/`origem` serão apenas gravados no produto (S2).
 Financeiro, CRM, metas, ganhos sobre vendas e relatórios ficam para depois desta entrega.

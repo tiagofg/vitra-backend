@@ -1,4 +1,4 @@
-"""Seed idempotente da F0.
+"""Seed idempotente da S0.
 
     python scripts/seed.py
 
@@ -30,15 +30,32 @@ ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
 
 UFS: list[tuple[str, str, str]] = [
-    ("AC", "Acre", "12"), ("AL", "Alagoas", "27"), ("AP", "Amapá", "16"),
-    ("AM", "Amazonas", "13"), ("BA", "Bahia", "29"), ("CE", "Ceará", "23"),
-    ("DF", "Distrito Federal", "53"), ("ES", "Espírito Santo", "32"), ("GO", "Goiás", "52"),
-    ("MA", "Maranhão", "21"), ("MT", "Mato Grosso", "51"), ("MS", "Mato Grosso do Sul", "50"),
-    ("MG", "Minas Gerais", "31"), ("PA", "Pará", "15"), ("PB", "Paraíba", "25"),
-    ("PR", "Paraná", "41"), ("PE", "Pernambuco", "26"), ("PI", "Piauí", "22"),
-    ("RJ", "Rio de Janeiro", "33"), ("RN", "Rio Grande do Norte", "24"),
-    ("RS", "Rio Grande do Sul", "43"), ("RO", "Rondônia", "11"), ("RR", "Roraima", "14"),
-    ("SC", "Santa Catarina", "42"), ("SP", "São Paulo", "35"), ("SE", "Sergipe", "28"),
+    ("AC", "Acre", "12"),
+    ("AL", "Alagoas", "27"),
+    ("AP", "Amapá", "16"),
+    ("AM", "Amazonas", "13"),
+    ("BA", "Bahia", "29"),
+    ("CE", "Ceará", "23"),
+    ("DF", "Distrito Federal", "53"),
+    ("ES", "Espírito Santo", "32"),
+    ("GO", "Goiás", "52"),
+    ("MA", "Maranhão", "21"),
+    ("MT", "Mato Grosso", "51"),
+    ("MS", "Mato Grosso do Sul", "50"),
+    ("MG", "Minas Gerais", "31"),
+    ("PA", "Pará", "15"),
+    ("PB", "Paraíba", "25"),
+    ("PR", "Paraná", "41"),
+    ("PE", "Pernambuco", "26"),
+    ("PI", "Piauí", "22"),
+    ("RJ", "Rio de Janeiro", "33"),
+    ("RN", "Rio Grande do Norte", "24"),
+    ("RS", "Rio Grande do Sul", "43"),
+    ("RO", "Rondônia", "11"),
+    ("RR", "Roraima", "14"),
+    ("SC", "Santa Catarina", "42"),
+    ("SP", "São Paulo", "35"),
+    ("SE", "Sergipe", "28"),
     ("TO", "Tocantins", "17"),
 ]
 
@@ -67,47 +84,66 @@ BANCOS: list[tuple[str, str]] = [
 # Valores de apoio que já aparecem nas telas transcritas.
 APOIO: dict[DominioApoio, list[tuple[str, str]]] = {
     DominioApoio.unidade: [
-        ("un", "Unidade"), ("pc", "Peça"), ("cx", "Caixa"),
-        ("mt", "Metro"), ("m2", "Metro quadrado"), ("kg", "Quilograma"),
+        ("un", "Unidade"),
+        ("pc", "Peça"),
+        ("cx", "Caixa"),
+        ("mt", "Metro"),
+        ("m2", "Metro quadrado"),
+        ("kg", "Quilograma"),
     ],
     DominioApoio.acabamento: [
-        ("preto", "Preto"), ("branco", "Branco"), ("dourado", "Dourado"),
-        ("cobre", "Cobre"), ("escovado", "Alumínio escovado"),
+        ("preto", "Preto"),
+        ("branco", "Branco"),
+        ("dourado", "Dourado"),
+        ("cobre", "Cobre"),
+        ("escovado", "Alumínio escovado"),
     ],
     DominioApoio.tamanho: [
-        ("p", "Pequeno"), ("m", "Médio"), ("g", "Grande"), ("unico", "Único"),
+        ("p", "Pequeno"),
+        ("m", "Médio"),
+        ("g", "Grande"),
+        ("unico", "Único"),
     ],
     DominioApoio.tipo_produto: [
-        ("luminaria", "Luminária"), ("lampada", "Lâmpada"),
-        ("fita_led", "Fita de LED"), ("perfil", "Perfil"), ("acessorio", "Acessório"),
+        ("luminaria", "Luminária"),
+        ("lampada", "Lâmpada"),
+        ("fita_led", "Fita de LED"),
+        ("perfil", "Perfil"),
+        ("acessorio", "Acessório"),
     ],
     DominioApoio.tipo_peca: [
-        ("pendente", "Pendente"), ("embutido", "Embutido"),
-        ("sobrepor", "Sobrepor"), ("arandela", "Arandela"), ("trilho", "Trilho"),
+        ("pendente", "Pendente"),
+        ("embutido", "Embutido"),
+        ("sobrepor", "Sobrepor"),
+        ("arandela", "Arandela"),
+        ("trilho", "Trilho"),
     ],
     DominioApoio.classificacao: [("a", "Curva A"), ("b", "Curva B"), ("c", "Curva C")],
     DominioApoio.estado_civil: [
-        ("solteiro", "Solteiro(a)"), ("casado", "Casado(a)"),
-        ("divorciado", "Divorciado(a)"), ("viuvo", "Viúvo(a)"), ("uniao", "União estável"),
+        ("solteiro", "Solteiro(a)"),
+        ("casado", "Casado(a)"),
+        ("divorciado", "Divorciado(a)"),
+        ("viuvo", "Viúvo(a)"),
+        ("uniao", "União estável"),
     ],
     DominioApoio.cargo: [
-        ("consultor", "Consultor de vendas"), ("gerente", "Gerente"),
-        ("comprador", "Comprador"), ("estoquista", "Estoquista"),
+        ("consultor", "Consultor de vendas"),
+        ("gerente", "Gerente"),
+        ("comprador", "Comprador"),
+        ("estoquista", "Estoquista"),
     ],
     DominioApoio.setor: [
-        ("vendas", "Vendas"), ("compras", "Compras"),
-        ("estoque", "Estoque"), ("administrativo", "Administrativo"),
+        ("vendas", "Vendas"),
+        ("compras", "Compras"),
+        ("estoque", "Estoque"),
+        ("administrativo", "Administrativo"),
     ],
 }
-
-# Perfis de acesso. O administrador recebe tudo; o consultor só leitura + apoio.
-GRUPOS_LEITURA = {"consultor"}
 
 
 async def sincronizar_permissoes(session: AsyncSession) -> list[Permissao]:
     existentes = {
-        (p.recurso, p.acao): p
-        for p in (await session.execute(select(Permissao))).scalars().all()
+        (p.recurso, p.acao): p for p in (await session.execute(select(Permissao))).scalars().all()
     }
     for recurso, acao in pares_do_catalogo():
         if (recurso, acao) not in existentes:
@@ -130,9 +166,7 @@ async def semear_ufs(session: AsyncSession) -> dict[str, Uf]:
 
 
 async def semear_cidades(session: AsyncSession, ufs: dict[str, Uf]) -> None:
-    atuais = {
-        (c.uf_id, c.nome) for c in (await session.execute(select(Cidade))).scalars().all()
-    }
+    atuais = {(c.uf_id, c.nome) for c in (await session.execute(select(Cidade))).scalars().all()}
     for sigla, nome, ibge in CIDADES:
         uf = ufs[sigla]
         if (uf.id, nome) not in atuais:
@@ -180,8 +214,7 @@ async def semear_empresas(session: AsyncSession, ufs: dict[str, Uf]) -> dict[str
     await session.flush()
 
     filiais = {
-        (f.empresa_id, f.codigo)
-        for f in (await session.execute(select(Filial))).scalars().all()
+        (f.empresa_id, f.codigo) for f in (await session.execute(select(Filial))).scalars().all()
     }
     for codigo in ("VERTZ", "VIAHF"):
         empresa = atuais[codigo]

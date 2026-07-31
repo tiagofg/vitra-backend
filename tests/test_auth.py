@@ -84,9 +84,7 @@ async def test_refresh_troca_por_novo_access(cliente: AsyncClient, admin: Usuari
     assert resposta.status_code == 200
 
     novo = resposta.json()["access_token"]
-    conferencia = await cliente.get(
-        "/api/v1/auth/eu", headers={"Authorization": f"Bearer {novo}"}
-    )
+    conferencia = await cliente.get("/api/v1/auth/eu", headers={"Authorization": f"Bearer {novo}"})
     assert conferencia.status_code == 200
 
 
@@ -114,9 +112,7 @@ async def test_alterar_senha_troca_as_credenciais(
     )
     assert resposta.status_code == 204
 
-    antiga = await cliente.post(
-        "/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO}
-    )
+    antiga = await cliente.post("/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO})
     atual = await cliente.post("/api/v1/auth/login", json={"login": login, "senha": nova})
     assert antiga.status_code == 401
     assert atual.status_code == 200

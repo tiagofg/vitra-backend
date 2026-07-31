@@ -11,7 +11,8 @@ from app.core.config import config as app_config
 from app.models import Base  # importa todos os modelos
 
 config = context.config
-config.set_main_option("sqlalchemy.url", app_config.url_efetiva)
+# Migração roda como **dono** das tabelas; a aplicação, não. Ver `Config.url_migracao`.
+config.set_main_option("sqlalchemy.url", app_config.url_migracao)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -21,7 +22,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=app_config.url_efetiva,
+        url=app_config.url_migracao,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,

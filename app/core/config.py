@@ -19,8 +19,24 @@ class Config(BaseSettings):
     ambiente: Literal["dev", "teste", "producao"] = "dev"
     debug: bool = True
 
-    database_url: str = "postgresql+asyncpg://vitra:vitra@localhost:5433/vitra"
-    database_url_teste: str = "postgresql+asyncpg://vitra:vitra@localhost:5433/vitra_teste"
+    # A aplicação conecta como `vitra_runtime`: não é dono das tabelas e não tem BYPASSRLS.
+    # Conectar como dono ou superusuário faria o Postgres ignorar as políticas de RLS e o
+    # recorte por empresa deixaria de existir — em silêncio, e só visível em produção.
+    # Uma URL só. Havia uma segunda, `database_url_teste`, de quando a suíte rodava contra
+    # um banco `vitra_teste` fixo declarado aqui. Agora cada execução sobe o próprio
+    # Postgres descartável e injeta a URL pelo ambiente, então a segunda variável só podia
+    # confundir: quem a preenchesse no `.env` veria o valor ser ignorado.
+    database_url: str = "postgresql+asyncpg://vitra_runtime:vitra_runtime@localhost:5433/vitra"
+    # Migração é a exceção: ela cria e altera tabela, então roda como dono. Nulo = usa a
+    # mesma URL da aplicação, que é o que vale para os testes (lá o dono é o container).
+    database_url_admin: str | None = None
+
+    # Banco compartilhado do bake-off (`vitra_bakeoff`, Neon/São Paulo). As três stacks em
+    # disputa apontam para ele ao mesmo tempo, então: **nada de DDL** e nada de escrita
+    # automatizada. A suíte inteira roda local; contra o Neon vai só a listagem, que é
+    # leitura. Um teste que suja o dado sujou para os outros dois times também.
+    # Nulo por padrão — sem a variável no `.env`, o que depende dele é pulado.
+    bakeoff_database_url: str | None = None
     db_echo: bool = False
     db_pool_size: int = 10
     db_max_overflow: int = 20
@@ -37,9 +53,14 @@ class Config(BaseSettings):
     pagina_tamanho_padrao: int = 50
     pagina_tamanho_maximo: int = 200
 
+    # O Neon suspende o banco após alguns minutos ocioso: a primeira conexão depois disso
+    # leva 1–2 s. Não é queda — o pool só precisa tolerar a espera em vez de desistir.
+    bakeoff_timeout_conexao: int = 15
+
     @property
-    def url_efetiva(self) -> str:
-        return self.database_url_teste if self.ambiente == "teste" else self.database_url
+    def url_migracao(self) -> str:
+        """URL do **dono** das tabelas. Só o Alembic usa."""
+        return self.database_url_admin or self.database_url
 
 
 @lru_cache

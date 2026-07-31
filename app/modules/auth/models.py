@@ -31,9 +31,7 @@ grupo_permissao = Table(
     "grupo_permissao",
     Base.metadata,
     Column("grupo_id", Uuid, ForeignKey("grupo.id", ondelete="CASCADE"), primary_key=True),
-    Column(
-        "permissao_id", Uuid, ForeignKey("permissao.id", ondelete="CASCADE"), primary_key=True
-    ),
+    Column("permissao_id", Uuid, ForeignKey("permissao.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -58,9 +56,7 @@ class Grupo(ModeloBase, AtivoMixin):
     nome: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     descricao: Mapped[str | None] = mapped_column(String(200))
 
-    permissoes: Mapped[list[Permissao]] = relationship(
-        secondary=grupo_permissao, lazy="selectin"
-    )
+    permissoes: Mapped[list[Permissao]] = relationship(secondary=grupo_permissao, lazy="selectin")
 
 
 class Usuario(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
@@ -68,11 +64,18 @@ class Usuario(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
 
     login: Mapped[str] = mapped_column(String(60), nullable=False, unique=True, index=True)
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
-    email: Mapped[str | None] = mapped_column(String(160))
+    # `unique=True` porque o e-mail deixou de ser só contato: é a ponte que liga quem loga
+    # (`usuario`) a quem trabalha (`employees`), e é por ela que a autorização por empresa
+    # decide. Duas linhas com o mesmo e-mail dariam o mesmo acesso à mesma empresa, e nada
+    # no banco impediria que existissem — quem pudesse criar usuário atravessaria o
+    # recorte escrevendo o e-mail certo.
+    # Continua nulável: o Postgres permite N nulos sob UNIQUE, e usuário sem e-mail
+    # simplesmente não alcança empresa nenhuma.
+    email: Mapped[str | None] = mapped_column(String(160), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # `Alterar Limites` do orçamento: acima disto o desconto exige autorização (F4).
+    # `Alterar Limites` do orçamento: acima disto o desconto exige autorização (S4).
     limite_desconto_pct: Mapped[Decimal] = mapped_column(
         Numeric(9, 4), default=Decimal("0.0000"), nullable=False
     )
@@ -101,8 +104,8 @@ class StatusAutorizacao(enum.StrEnum):
 class AutorizacaoDocumento(ModeloBase):
     """O botão `Permissões` do orçamento: autorização pontual, por documento.
 
-    Modelo criado em F0 junto com o RBAC porque a migração inicial já o comporta;
-    o serviço que o consome entra em F4 (desconto acima do limite do usuário).
+    Modelo criado em S0 junto com o RBAC porque a migração inicial já o comporta;
+    o serviço que o consome entra em S4 (desconto acima do limite do usuário).
     """
 
     __tablename__ = "autorizacao_documento"

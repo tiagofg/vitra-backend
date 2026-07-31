@@ -3,26 +3,42 @@ name = "vitra-backend"
 version = "0.1.0"
 description = "Backend VITRA — núcleo comercial (substituto do SoftLux)"
 requires-python = ">=3.12"
+# Pisos alinhados à última estável de cada pacote em 30/07/2026. Piso e não pin: pin em
+# dependência de runtime trava atualização de segurança e briga com o resolvedor. Quem
+# garante reprodutibilidade é o ambiente instalado; o piso só diz "abaixo disto não roda".
+# As exceções são `ruff` e `mypy`, pinados — ver a nota em `dev`.
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30",
-    "alembic>=1.14",
-    "pydantic>=2.9",
-    "pydantic-settings>=2.6",
-    "argon2-cffi>=23.1",
-    "pyjwt>=2.10",
-    "email-validator>=2.2",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52",
+    "sqlalchemy[asyncio]>=2.0.51",
+    "asyncpg>=0.31",
+    "alembic>=1.18",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.14",
+    "argon2-cffi>=25.1",
+    "pyjwt>=2.13",
+    "email-validator>=2.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.24",
+    "pytest>=9.1",
+    # 1.x mudou o padrão de escopo do event loop; o projeto usa `asyncio_mode = "auto"`
+    # com escopo de função, que continua sendo o padrão.
+    "pytest-asyncio>=1.4",
     "httpx>=0.28",
-    "ruff>=0.8",
-    "mypy>=1.13",
+    # Linter e checador de tipo vão **pinados**, ao contrário do resto. Um bump de patch do
+    # ruff reformata a árvore inteira; se a máquina do dev, o pre-commit e o CI rodarem
+    # versões diferentes, "passou aqui" deixa de significar "passa lá" — e o CI vira um
+    # oráculo que reprova código que o hook local acabou de aprovar.
+    # Ao subir, suba junto o `rev` de `.pre-commit-config.yaml`.
+    "ruff==0.16.1",
+    "mypy==2.3.0",
+    "pre-commit>=4.6",
+    # Postgres descartável por execução. Container fixo não serve mais: cada suíte precisa
+    # recriar o RLS do zero, e política de segurança que sobra de uma execução para a outra
+    # é justamente o que faz um teste de isolamento passar por acidente.
+    "testcontainers[postgres]>=4.15",
 ]
 
 [build-system]

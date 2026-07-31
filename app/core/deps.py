@@ -13,6 +13,10 @@ from app.modules.auth.models import Usuario
 
 Sessao = Annotated[AsyncSession, Depends(get_session)]
 
+# `SessaoEmpresa` — a sessão com empresa declarada e autorizada — mora em
+# `app/modules/bakeoff/deps.py`: autorizar depende de `employee_company`, e core não
+# importa modelo de módulo.
+
 # auto_error=False para que a falta de header vire o nosso envelope, não o do Starlette.
 _bearer = HTTPBearer(auto_error=False, description="Token JWT obtido em POST /auth/login")
 

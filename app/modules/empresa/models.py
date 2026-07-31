@@ -33,7 +33,7 @@ class Empresa(
     codigo: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     razao_social: Mapped[str] = mapped_column(String(160), nullable=False)
     nome_fantasia: Mapped[str | None] = mapped_column(String(160))
-    cnpj: Mapped[str | None] = mapped_column(String(18), unique=True)
+    cnpj: Mapped[str | None] = mapped_column(String(14), unique=True)
     inscricao_estadual: Mapped[str | None] = mapped_column(String(30))
     inscricao_municipal: Mapped[str | None] = mapped_column(String(30))
 
@@ -44,7 +44,7 @@ class Filial(ModeloBase, AtivoMixin, EmpresaScopedMixin, EnderecoMixin, Contatos
 
     codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     nome: Mapped[str] = mapped_column(String(160), nullable=False)
-    cnpj: Mapped[str | None] = mapped_column(String(18))
+    cnpj: Mapped[str | None] = mapped_column(String(14))
     matriz: Mapped[bool] = mapped_column(default=False, nullable=False)
 
 

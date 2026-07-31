@@ -15,11 +15,11 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-**Estado:** a S0 está entregue neste repositório. Em seguida entra o **bake-off**, que decide
-qual stack leva o servidor do VITRA. Ele trouxe consigo uma mudança arquitetural que este plano
-absorveu por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
+**Estado:** S0 e **SB (bake-off)** estão entregues neste repositório — os 7 entregáveis, com
+102 testes verdes. O bake-off trouxe consigo uma mudança arquitetural que este plano absorveu
+por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
 Row-Level Security com chave composta**. Ver "Multiempresa por RLS", "Bake-off" e "Retrabalho na
-S0 já entregue".
+S0 já entregue". A escolha da stack é do Henrique; a nossa coluna está em `notas-bakeoff.md`.
 
 Se a nossa stack **não** for a escolhida, o que sobrevive deste plano é o modelo de dados e as
 decisões de domínio — as ~20 telas, os 5 mecanismos, o que o legado ensina. Vale para quem
@@ -586,11 +586,11 @@ importação, ecossistema de IA.
 ## FastAPI × Litestar — o que de fato difere
 
 Duas das três stacks do bake-off são Python. Vale saber onde elas realmente divergem, para não
-medir a coisa errada. Versões conferidas no PyPI em **29/07/2026**:
+medir a coisa errada. Versões conferidas no PyPI em **30/07/2026**:
 
 | | FastAPI | Litestar |
 |---|---|---|
-| Versão | `0.140.13` | `2.24.0` (11/06/2026) |
+| Versão | `0.141.1` | `2.24.0` (11/06/2026) |
 | Python | ≥ 3.10 | ≥ 3.8, < 4.0 |
 | Base | Starlette ≥ 0.46 + Pydantic ≥ 2.9 | camada ASGI própria; **msgspec ≥ 0.18.2 é dependência de núcleo** |
 | Adoção | ~80 mil estrelas, ~4,5 mi downloads/dia | ~5,9 mil estrelas |
@@ -710,11 +710,45 @@ Duas notas de execução, decididas durante a implementação:
   a migração em vez de `Base.metadata.create_all` — senão o schema de teste e o de produção
   divergem sem ninguém perceber. Vale para toda migração das fases seguintes.
 
-**SB — Bake-off.** ⏭ *Próxima.* Entra **entre S0 e S1**: as 7 tabelas com chave composta, RLS
-com as 4 políticas, os 4 testes de isolamento, o de concorrência, listagem server-side contra o
-banco compartilhado, OpenAPI e CI. Carrega junto o retrabalho da seção anterior — não dá para
-fazer os testes de isolamento sem `tenancy.py`. *Entregue quando:* os 4 testes de isolamento
-passam e a listagem responde apontando para o Neon.
+**SB — Bake-off.** ✅ *Entregue.* As 7 tabelas com chave composta `(tenant_id, id)` e FK
+composta, RLS com `FORCE` e as 4 políticas por tabela em migração própria, `app/core/tenancy.py`
+com o `SET LOCAL` no `after_begin`, os 4 testes de isolamento, o de concorrência, a listagem
+server-side, OpenAPI (`make openapi`) e CI. A suíte passou a subir Postgres 17 descartável por
+execução (Testcontainers) e a aplicar as migrações — `create_all` não cria política, e a
+suíte inteira de isolamento passaria contra um banco sem trava. As anotações de medição estão
+em `notas-bakeoff.md`.
+
+Três decisões tomadas durante a execução, que valem para o VITRA real:
+
+- **A aplicação nunca conecta como dono.** Metade do RLS não é código: é `FORCE` mais um papel
+  de runtime sem `BYPASSRLS`. Isso obrigou a separar URL de migração (dono) de URL de
+  aplicação (`VITRA_DATABASE_URL_ADMIN` × `VITRA_DATABASE_URL`).
+- **A empresa ativa mora em `Session.info`, não num `ContextVar`.** O evento `after_begin` já
+  recebe a sessão, então não há como o valor pertencer à sessão errada. E há um segundo
+  caminho que emite o `set_config` na hora, porque a transação costuma já estar aberta quando
+  a empresa é resolvida — autenticar o usuário já consultou o banco.
+- **Falta de empresa é `400` na borda, não lista vazia.** Sob RLS o comportamento natural de
+  esquecer a empresa é "voltou vazio", que é seguro e péssimo de depurar. Falhar
+  explicitamente troca meia hora de investigação por uma mensagem de erro.
+- **Declarar a empresa não é autorizar o acesso a ela.** O RLS confia no GUC, o GUC vem do
+  cabeçalho e o cabeçalho vem do cliente: sem conferir o vínculo do usuário em
+  `employee_company`, a política protegeria um recorte escolhido por quem chama. São duas
+  defesas contra atacantes diferentes — o RLS cobre `WHERE` esquecido no serviço, a borda
+  cobre chamador malicioso — e a segunda **não** é opcional. Ordem: `401` sem token, `400`
+  sem empresa, `403` sem vínculo, antes de qualquer query de negócio. A checagem roda sob a
+  própria política, então nem ela escreve filtro de empresa.
+
+**Retrabalho da S0 — parcialmente feito.** Foi feito o que o bake-off precisava e o que era
+barato: `tenancy.py`, `TenantScopedMixin` com PK composta, `ListingSpec.campo_ativo`,
+Testcontainers no lugar do banco fixo, e CNPJ `varchar(18)` com máscara → `varchar(14)` caixa
+alta sem máscara. **Não** foi feita a renomeação dos módulos da S0 (`Empresa` → `tenants`,
+`TabelaApoio` → `catalog_lookups`, `Usuario` → `employees` + `employee_company`), por um
+motivo que é decisão e não preguiça: o schema fixo do bake-off tem
+`employees(id, name, email, active)` — **sem senha, sem grupo, sem permissão**. Migrar `Usuario`
+para lá agora entregaria um login quebrado sem mover nenhum dos 7 entregáveis, e a ponte
+"papel = grupo, permissões no grupo" é justamente uma das coisas que este plano deixa para
+decidir *depois* do bake-off. Enquanto isso os dois desenhos coexistem: `EmpresaScopedMixin`
+para as tabelas da S0, `TenantScopedMixin` para as novas.
 
 **S1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa

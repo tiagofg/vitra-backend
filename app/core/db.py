@@ -10,9 +10,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import config
+from app.core.tenancy import registrar_eventos
+
+# Antes de qualquer sessão existir: é este registro que faz o `SET LOCAL` sair sozinho no
+# início de toda transação. Sem ele o RLS não deixa de valer — a aplicação é que passa a
+# enxergar zero linhas em tudo.
+registrar_eventos()
 
 engine: AsyncEngine = create_async_engine(
-    config.url_efetiva,
+    config.database_url,
     echo=config.db_echo,
     pool_size=config.db_pool_size,
     max_overflow=config.db_max_overflow,
