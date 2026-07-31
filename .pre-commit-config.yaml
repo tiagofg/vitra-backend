@@ -1,0 +1,115 @@
+# Portão de qualidade local. O CI roda exatamente estes mesmos hooks
+# (`.github/workflows/ci.yml`, job `qualidade`) — se passar aqui, passa lá.
+#
+#   pre-commit install --install-hooks
+#   pre-commit install --hook-type commit-msg --hook-type pre-push
+#
+# O que roda quando:
+#   commit    higiene, ruff, mypy, segredo, migração — segundos
+#   commit-msg Conventional Commits
+#   push      a suíte inteira, que sobe Postgres e leva ~35 s
+#
+# `pytest` fora do commit é decisão: um hook de 35 s em cada commit ensina o time a usar
+# `--no-verify`, e aí nenhum hook roda. No push o custo é aceitável e a proteção é a mesma.
+
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_language_version:
+  python: python3.12
+
+repos:
+  # --- higiene de arquivo ---------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Em Markdown, dois espaços no fim da linha são quebra de linha significativa.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      # Dump de banco, chave privada e afins não entram no repositório. Ver também o
+      # gitleaks abaixo — este pega o arquivo, aquele pega o conteúdo.
+      - id: detect-private-key
+
+  # --- lint, formato e tipos ------------------------------------------------
+  # Todos `local`, rodando as ferramentas do próprio ambiente do projeto. É uma escolha
+  # contra a corrente (o normal é `astral-sh/ruff-pre-commit`), por dois motivos:
+  #
+  #   * **Uma versão só.** O `rev` do hook e o pin do `pyproject.toml` são dois lugares que
+  #     divergem no dia em que alguém atualiza um e esquece o outro — e um bump de patch do
+  #     ruff reformata a árvore. Com hook `local`, o `pyproject.toml` é a única fonte.
+  #   * **O mypy precisa das dependências.** Num ambiente isolado ele não enxerga os stubs
+  #     do SQLAlchemy nem o plugin do Pydantic, e passa a aprovar o que o CI reprova.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (app)
+        entry: mypy app
+        language: system
+        types: [python]
+        # `app` inteiro de uma vez: mypy sobre arquivos soltos perde o grafo de tipos e
+        # deixa passar erro que só aparece com o pacote completo.
+        pass_filenames: false
+
+  # --- segredo --------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+        # A string do banco compartilhado do bake-off traz senha real e mora só no `.env`.
+        # Este hook é a rede que pega o dia em que alguém colar a URL num teste "só para
+        # testar" — e o `.env` no `.gitignore` não pega esse caso.
+        # As senhas que existem no repositório são de desenvolvimento e obviamente falsas
+        # (`vitra_runtime`, `runtime-de-teste`); o gitleaks não as sinaliza. Se um dia
+        # sinalizar, o lugar de liberar é um `.gitleaks.toml` na raiz, nunca `--no-verify`.
+
+  # --- migrações ------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: alembic-cabeca-unica
+        name: "alembic: uma cabeça só"
+        entry: python scripts/checar_migracoes.py
+        language: system
+        pass_filenames: false
+        files: ^alembic/versions/
+        # Duas cabeças acontecem quando dois branches criam migração em paralelo. O erro
+        # não aparece no `upgrade head` de quem criou — aparece no de quem faz o merge.
+
+  # --- mensagem de commit ---------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        # Contrato do VITRA: commits Conventional, curtos, focados no *porquê*.
+
+  # --- suíte (só no push) ---------------------------------------------------
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (sobe Postgres descartável)
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        # Precisa de Docker: a suíte sobe Postgres 17 e aplica as migrações, RLS incluído.

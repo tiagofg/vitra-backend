@@ -1,0 +1,163 @@
+name: CI
+
+# CI vermelho = sessão não terminou. É contrato do VITRA, não recomendação.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Um push novo cancela a execução anterior do mesmo branch: minuto de runner gasto em
+# revisão que já foi superada é desperdício puro.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Menor privilégio: nenhum job aqui escreve no repositório.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # Roda **os mesmos hooks do pre-commit**, não uma segunda lista de comandos parecida.
+  # Duas listas divergem, e o dia em que divergirem o CI vai reprovar código que o hook
+  # local aprovou — que é o jeito mais rápido de ensinar o time a usar `--no-verify`.
+  qualidade:
+    name: Qualidade (pre-commit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # O gitleaks compara commits; com o checkout raso de 1 commit ele não tem o que
+          # comparar num push com vários commits.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # ruff e mypy são hooks `local`: precisam das dependências do projeto instaladas.
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      # `pytest` está declarado no estágio `pre-push` e por isso fica naturalmente de fora
+      # daqui — `run --all-files` só executa hooks do estágio `pre-commit`. Quem roda a
+      # suíte é o job `testes`, que tem Docker.
+      - name: pre-commit (todos os arquivos)
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      # Sem `services: postgres` de propósito. A suíte sobe o próprio Postgres 17 via
+      # Testcontainers e aplica as migrações — RLS incluído. Um Postgres de serviço criado
+      # pelo CI seria um segundo caminho de montagem do schema, e o dia em que ele
+      # divergisse da migração ninguém ficaria sabendo. O runner do GitHub já tem Docker.
+      - name: pytest (Postgres descartável + migrações)
+        run: pytest -q
+        env:
+          # A string do banco compartilhado do bake-off traz senha real e não entra no
+          # repositório: no CI ela não existe, e os testes que dependem dela são pulados.
+          VITRA_BAKEOFF_DATABASE_URL: ""
+
+  # Migração que não desfaz é migração que ninguém consegue reverter em produção às 3h da
+  # manhã. O `downgrade` do RLS derruba política e `FORCE`, e sem este job ele nunca seria
+  # executado — os testes só aplicam `upgrade head`.
+  migracoes:
+    name: Migrações (ida e volta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: vitra
+          POSTGRES_PASSWORD: vitra
+          POSTGRES_DB: vitra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vitra -d vitra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      VITRA_AMBIENTE: dev
+      VITRA_DATABASE_URL_ADMIN: postgresql+asyncpg://vitra:vitra@localhost:5432/vitra
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      - name: Uma cabeça só
+        run: python scripts/checar_migracoes.py
+
+      - name: upgrade head
+        run: alembic upgrade head
+
+      - name: downgrade base
+        run: alembic downgrade base
+
+      - name: upgrade head de novo
+        # A ida sobre o que a volta deixou. Pega o `downgrade` que esquece de apagar tipo
+        # ENUM, política ou índice — a falha aparece na segunda ida, nunca na primeira.
+        run: alembic upgrade head
+
+  contrato:
+    name: Contrato OpenAPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      # Um servidor Python não pode usar tRPC, que é o mecanismo de contrato tipado do
+      # front hoje. O OpenAPI é o substituto — é por ele que o front gera o cliente, então
+      # ele estar desatualizado no repositório quebra quem consome.
+      - name: openapi.json está atualizado
+        run: |
+          python scripts/exportar_openapi.py
+          git diff --exit-code -- openapi.json || {
+            echo "::error file=openapi.json::O contrato mudou e não foi commitado. Rode 'make openapi'."
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openapi
+          path: openapi.json

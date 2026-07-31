@@ -1,0 +1,57 @@
+# Manter as dependências nas últimas estáveis sem depender de alguém lembrar.
+#
+# O `pyproject.toml` declara pisos, não pins — então o Dependabot aqui serve para
+# **avisar** que saiu versão nova e abrir o PR que sobe o piso, com changelog anexado. Nos
+# dois pacotes pinados (`ruff` e `mypy`) ele abre PR de verdade, que é justamente onde o
+# aviso automático mais vale: um bump de patch do ruff reformata a árvore, e é melhor isso
+# acontecer num PR isolado do que junto de uma mudança de negócio.
+#
+# Ao aceitar um bump de `ruff`, confira que o `rev` correspondente em
+# `.pre-commit-config.yaml` não existe — os hooks de lint são `local` e leem a versão do
+# `pyproject.toml`. Só os hooks de terceiros (higiene, gitleaks, conventional) têm `rev`.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Um PR só para o ferramental de desenvolvimento: são bumps de baixo risco e revisar
+      # cinco PRs separados por semana é o caminho mais curto para ninguém revisar nenhum.
+      ferramental:
+        patterns: ["ruff", "mypy", "pre-commit", "pytest*", "httpx", "testcontainers*"]
+      runtime:
+        patterns: ["*"]
+        exclude-patterns: ["ruff", "mypy", "pre-commit", "pytest*", "httpx", "testcontainers*"]
+    commit-message:
+      prefix: "chore"
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # Pega o `postgres:17-alpine` do docker-compose. A imagem de desenvolvimento envelhecer
+  # em relação à de produção é como um bug de "só acontece no servidor" nasce.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
