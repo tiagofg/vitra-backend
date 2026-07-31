@@ -1,9 +1,39 @@
 from __future__ import annotations
 
+import re
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
+
+_NAO_ALFANUMERICO = re.compile(r"[^0-9A-Za-z]")
+
+
+def _normalizar_cnpj(valor: Any) -> Any:
+    """Tira máscara e sobe para caixa alta antes de qualquer validação.
+
+    O banco guarda `varchar(14)` sem máscara — a borda é que aceita `12.345.678/0001-90`,
+    porque é assim que o dado chega da tela e do arquivo do legado. Caixa alta não é
+    capricho: **o CNPJ alfanumérico passa a valer em 31/07/2026**, e guardar `a1b2...` e
+    `A1B2...` como valores diferentes quebraria a unicidade em silêncio.
+    """
+    if not isinstance(valor, str):
+        return valor
+    return _NAO_ALFANUMERICO.sub("", valor).upper()
+
+
+def _conferir_tamanho_cnpj(valor: str) -> str:
+    if len(valor) != 14:
+        raise ValueError("CNPJ deve ter 14 caracteres, sem máscara.")
+    return valor
+
+
+Cnpj = Annotated[
+    str,
+    BeforeValidator(_normalizar_cnpj),
+    AfterValidator(_conferir_tamanho_cnpj),
+    Field(max_length=14, examples=["12345678000190"]),
+]
 
 
 class SaidaBase(BaseModel):
@@ -13,7 +43,7 @@ class SaidaBase(BaseModel):
 
 
 class EnderecoCampos(BaseModel):
-    """Espelha `EnderecoMixin`. Reusado por empresa, filial e (em F1) pelos cadastros."""
+    """Espelha `EnderecoMixin`. Reusado por empresa, filial e (em S1) pelos cadastros."""
 
     endereco_cep: str | None = Field(default=None, max_length=9)
     endereco_logradouro: str | None = Field(default=None, max_length=160)

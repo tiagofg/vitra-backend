@@ -5,6 +5,7 @@ import uuid
 from pydantic import BaseModel, Field
 
 from app.common.schemas import (
+    Cnpj,
     ComunicadoresCampos,
     ContatosCampos,
     EnderecoCampos,
@@ -17,7 +18,7 @@ class EmpresaCriar(EnderecoCampos, ContatosCampos, RedesSociaisCampos, Comunicad
     codigo: str = Field(min_length=1, max_length=20)
     razao_social: str = Field(min_length=1, max_length=160)
     nome_fantasia: str | None = Field(default=None, max_length=160)
-    cnpj: str | None = Field(default=None, max_length=18)
+    cnpj: Cnpj | None = None
     inscricao_estadual: str | None = Field(default=None, max_length=30)
     inscricao_municipal: str | None = Field(default=None, max_length=30)
     observacao: str | None = Field(default=None, max_length=2000)
@@ -26,7 +27,7 @@ class EmpresaCriar(EnderecoCampos, ContatosCampos, RedesSociaisCampos, Comunicad
 class EmpresaAtualizar(EnderecoCampos, ContatosCampos, RedesSociaisCampos):
     razao_social: str | None = Field(default=None, min_length=1, max_length=160)
     nome_fantasia: str | None = Field(default=None, max_length=160)
-    cnpj: str | None = Field(default=None, max_length=18)
+    cnpj: Cnpj | None = None
     inscricao_estadual: str | None = Field(default=None, max_length=30)
     inscricao_municipal: str | None = Field(default=None, max_length=30)
     observacao: str | None = Field(default=None, max_length=2000)
@@ -49,14 +50,14 @@ class FilialCriar(EnderecoCampos, ContatosCampos):
     empresa_id: uuid.UUID
     codigo: str = Field(min_length=1, max_length=20)
     nome: str = Field(min_length=1, max_length=160)
-    cnpj: str | None = Field(default=None, max_length=18)
+    cnpj: Cnpj | None = None
     matriz: bool = False
 
 
 class FilialAtualizar(EnderecoCampos, ContatosCampos):
     codigo: str | None = Field(default=None, min_length=1, max_length=20)
     nome: str | None = Field(default=None, min_length=1, max_length=160)
-    cnpj: str | None = Field(default=None, max_length=18)
+    cnpj: Cnpj | None = None
     matriz: bool | None = None
     ativo: bool | None = None
 
