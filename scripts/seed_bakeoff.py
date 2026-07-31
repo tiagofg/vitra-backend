@@ -24,6 +24,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -92,12 +93,21 @@ async def main() -> None:
     print("Seed do bake-off concluído.")
 
 
+HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
+
+
 def _recusar_banco_remoto() -> None:
-    """A regra nº 1 do banco compartilhado: não escrever nele por automação."""
-    url = config.database_url
-    if not any(marca in url for marca in ("localhost", "127.0.0.1", "@db", "@db:")):
+    """A regra nº 1 do banco compartilhado: não escrever nele por automação.
+
+    Compara o **host**, não a URL inteira. Um `in` sobre a string crua examinaria também
+    usuário e senha, e uma senha que por acaso contivesse `@db` liberaria a execução contra
+    o Neon. É a única coisa entre um comando distraído e o banco de outros dois times, e
+    esse tipo de trava não pode ser mais frouxa que o risco que ela cobre.
+    """
+    host = make_url(config.database_url).host or ""
+    if host not in HOSTS_LOCAIS:
         raise SystemExit(
-            f"Recusando rodar contra {url!r}.\n"
+            f"Recusando rodar contra o host {host!r}.\n"
             "Este seed é só para o Postgres local. O banco do bake-off no Neon é "
             "compartilhado com os outros dois times e tem estrutura e dados fixos."
         )

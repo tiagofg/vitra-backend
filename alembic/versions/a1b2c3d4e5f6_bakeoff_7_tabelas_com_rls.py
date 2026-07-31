@@ -74,7 +74,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_catalog_lookups"),
         sa.UniqueConstraint("kind", "name", name="uq_catalog_lookups_kind_name"),
     )
-    op.create_index("ix_catalog_lookups_kind_name", "catalog_lookups", ["kind", "name"])
 
     op.create_table(
         "products",
@@ -89,7 +88,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("tenant_id", "id", name="pk_products"),
         sa.UniqueConstraint("tenant_id", "code", name="uq_products_tenant_code"),
     )
-    op.create_index("ix_products_tenant_id", "products", ["tenant_id"])
+    # Único índice além dos que PK e unique já criam: a listagem ordena e busca por
+    # `description` dentro de uma empresa. Índice sobre `tenant_id` sozinho seria
+    # redundante — a PK composta já o tem como coluna líder.
     op.create_index("ix_products_tenant_description", "products", ["tenant_id", "description"])
 
     op.create_table(
@@ -119,7 +120,6 @@ def upgrade() -> None:
             "tenant_id", "product_id", "finish", "size", name="uq_product_variants_produto"
         ),
     )
-    op.create_index("ix_product_variants_tenant_id", "product_variants", ["tenant_id"])
 
     op.create_table(
         "product_tenant",
@@ -143,7 +143,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("tenant_id", "id", name="pk_product_tenant"),
         sa.UniqueConstraint("tenant_id", "variant_id", name="uq_product_tenant_variant"),
     )
-    op.create_index("ix_product_tenant_tenant_id", "product_tenant", ["tenant_id"])
 
     op.create_table(
         "employee_company",
@@ -164,7 +163,6 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("tenant_id", "employee_id", name="pk_employee_company"),
     )
-    op.create_index("ix_employee_company_tenant_id", "employee_company", ["tenant_id"])
 
     _criar_papel_runtime()
     for tabela in TABELAS_POR_EMPRESA:
@@ -172,21 +170,25 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for tabela in reversed(TABELAS_POR_EMPRESA):
-        _desligar_rls(tabela)
-
+    # Sem desligar RLS antes: política é objeto dependente da tabela, e o `DROP TABLE`
+    # leva as quatro junto. Desligar primeiro era trabalho morto — e trabalho morto numa
+    # migração é pior que inútil, porque parece necessário para quem lê depois.
     op.drop_table("employee_company")
     op.drop_table("product_tenant")
     op.drop_table("product_variants")
     op.drop_table("products")
-    op.drop_index("ix_catalog_lookups_kind_name", table_name="catalog_lookups")
     op.drop_table("catalog_lookups")
     op.drop_table("employees")
     op.drop_table("tenants")
 
-    # O papel sobrevive ao downgrade: ele pode ter privilégio em outras tabelas do banco,
-    # e um DROP ROLE aqui derrubaria junto o acesso do resto da aplicação.
-    op.execute(f"REVOKE ALL ON SCHEMA public FROM {PAPEL_RUNTIME}")
+    # Nada a revogar, e nenhum `DROP ROLE`.
+    #
+    # Os `GRANT` por tabela morreram com o `DROP TABLE` acima — privilégio é dependente do
+    # objeto. Sobra o `USAGE ON SCHEMA public`, que fica de propósito: o papel pode ter
+    # privilégio em outras tabelas do banco, e tirar o `USAGE` derrubaria o acesso a elas
+    # tão bem quanto um `DROP ROLE` derrubaria. A versão anterior deste arquivo fazia
+    # `REVOKE ALL ON SCHEMA public` logo abaixo de um comentário explicando por que não
+    # se devia quebrar esse acesso.
 
 
 def _criar_papel_runtime() -> None:
@@ -226,10 +228,3 @@ def _ligar_rls(tabela: str) -> None:
         f"USING ({PREDICADO}) WITH CHECK ({PREDICADO})"
     )
     op.execute(f'CREATE POLICY "{tabela}_del" ON {tabela} FOR DELETE USING ({PREDICADO})')
-
-
-def _desligar_rls(tabela: str) -> None:
-    for sufixo in ("sel", "ins", "upd", "del"):
-        op.execute(f'DROP POLICY IF EXISTS "{tabela}_{sufixo}" ON {tabela}')
-    op.execute(f"ALTER TABLE {tabela} NO FORCE ROW LEVEL SECURITY")
-    op.execute(f"ALTER TABLE {tabela} DISABLE ROW LEVEL SECURITY")

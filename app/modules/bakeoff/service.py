@@ -12,6 +12,7 @@ primeira hipótese é sempre a mesma — faltou o `SET LOCAL`.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from sqlalchemy import Select, select
@@ -49,7 +50,7 @@ class ProdutoService:
         stmt = aplicar_listagem(self._stmt_base(), params, SPEC_PRODUTO)
         return await paginar(self.session, stmt, params, ProdutoSaida.model_validate)
 
-    async def criar(self, dados: ProdutoCriar, empresa_id: Any) -> Produto:
+    async def criar(self, dados: ProdutoCriar, empresa_id: uuid.UUID) -> Produto:
         """`tenant_id` vem do argumento, não do corpo do pedido.
 
         E ele precisa bater com a empresa da transação: a política de INSERT tem

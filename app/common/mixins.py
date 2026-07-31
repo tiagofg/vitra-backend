@@ -32,9 +32,10 @@ class TenantScopedMixin:
     @declared_attr
     @classmethod
     def tenant_id(cls) -> Mapped[uuid.UUID]:
-        return mapped_column(
-            Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
-        )
+        # Sem `index=True`: a PK composta `(tenant_id, id)` já cria um índice com
+        # `tenant_id` como coluna líder, que serve para tudo que um índice só nesta coluna
+        # serviria. O segundo custaria escrita e espaço sem ganhar nenhuma consulta.
+        return mapped_column(Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False)
 
 
 class EmpresaScopedMixin:

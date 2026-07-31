@@ -93,8 +93,9 @@ class ValorApoio(Base):
 
     __tablename__ = "catalog_lookups"
     __table_args__ = (
+        # A unique constraint já cria o índice `(kind, name)` que a busca por domínio usa.
+        # Um `Index` com as mesmas colunas seria uma segunda cópia da mesma estrutura.
         UniqueConstraint("kind", "name", name="uq_catalog_lookups_kind_name"),
-        Index("ix_catalog_lookups_kind_name", "kind", "name"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
