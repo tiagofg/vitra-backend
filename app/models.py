@@ -19,7 +19,21 @@ from app.modules.auth.models import (
     grupo_permissao,
     usuario_grupo,
 )
+from app.modules.bakeoff.models import (
+    Colaborador,
+    ColaboradorEmpresa,
+    PapelEmpresa,
+    ProdutoEmpresa,
+    ValorApoio,
+    Variante,
+)
+from app.modules.bakeoff.models import Empresa as EmpresaBakeoff
+from app.modules.bakeoff.models import Produto as ProdutoBakeoff
 from app.modules.empresa.models import CentroCusto, Empresa, Filial
+
+# Os apelidos `*Bakeoff` são deliberados: `tenants` e `empresa` são a mesma ideia em dois
+# desenhos que coexistem por ora — o novo, por RLS, e o da S0, por coluna filtrada no
+# serviço. Quando o retrabalho da S0 terminar, `Empresa` volta a ser um nome só.
 
 __all__ = [
     "AutorizacaoDocumento",
@@ -27,19 +41,27 @@ __all__ = [
     "Base",
     "CentroCusto",
     "Cidade",
+    "Colaborador",
+    "ColaboradorEmpresa",
     "ContadorDocumento",
     "DominioApoio",
     "Empresa",
+    "EmpresaBakeoff",
     "Filial",
     "Grupo",
     "ModeloBase",
+    "PapelEmpresa",
     "Permissao",
+    "ProdutoBakeoff",
+    "ProdutoEmpresa",
     "StatusAutorizacao",
     "TabelaApoio",
     "TipoAutorizacao",
     "TipoDocumento",
     "Uf",
     "Usuario",
+    "ValorApoio",
+    "Variante",
     "grupo_permissao",
     "usuario_grupo",
 ]
