@@ -11,11 +11,22 @@ from sqlalchemy import ColumnElement, Select, asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import ErroDominio
+from app.core.errors import ErroDominio, Falha, pode_falhar
 
 T = TypeVar("T")
 
+ORDENACAO_INVALIDA = Falha(
+    status=ErroDominio.http_status,
+    codigo="ordenacao_invalida",
+    descricao="`ordenar_por` fora da whitelist do recurso.",
+    mensagem="Não é possível ordenar por 'senha_hash'.",
+    campos={"ordenar_por": "permitidos: codigo, razao_social, criado_em"},
+)
 
+
+# Declarado na classe, e não em cada listagem: quem aceita `ordenar_por` é ela, e toda rota
+# que a usa como dependência herda o 400 sem repetir nada.
+@pode_falhar(ORDENACAO_INVALIDA)
 class ListParams:
     """A barra de 7 ações das listagens do legado vira este único conjunto de parâmetros.
 

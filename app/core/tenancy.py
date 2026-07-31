@@ -23,7 +23,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, SessionTransaction
 
-from app.core.errors import ErroDominio
+from app.core.errors import ErroDominio, Falha
 
 GUC_EMPRESA = "app.current_tenant"
 
@@ -71,6 +71,23 @@ class SemVinculoComEmpresa(ErroDominio):
             "Usuário não tem vínculo com a empresa informada.",
             campos={"X-Empresa-Id": str(empresa_id)},
         )
+
+
+EMPRESA_NAO_DECLARADA = Falha(
+    status=EmpresaNaoDeclarada.http_status,
+    codigo=EmpresaNaoDeclarada.codigo,
+    descricao="Falta o cabeçalho `X-Empresa-Id`.",
+    mensagem="Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
+    campos={"X-Empresa-Id": "obrigatório"},
+)
+
+SEM_VINCULO_COM_EMPRESA = Falha(
+    status=SemVinculoComEmpresa.http_status,
+    codigo=SemVinculoComEmpresa.codigo,
+    descricao="Autenticado, mas sem vínculo ativo com a empresa pedida.",
+    mensagem="Usuário não tem vínculo com a empresa informada.",
+    campos={"X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"},
+)
 
 
 async def declarar_empresa(session: AsyncSession, empresa_id: uuid.UUID) -> None:

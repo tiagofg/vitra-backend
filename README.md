@@ -11,6 +11,7 @@ As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bake
 | Bloco | Onde |
 |---|---|
 | Config, sessão async, envelope de erro único | `app/core/config.py`, `db.py`, `errors.py` |
+| Contrato OpenAPI com as respostas de erro declaradas | `app/core/openapi.py` |
 | `ListParams` — a barra de 7 ações das listagens | `app/core/listing.py` |
 | Numeração série+número por empresa, com `FOR UPDATE` | `app/core/numbering.py` |
 | RBAC granular recurso+ação | `app/core/permissions.py` |
@@ -197,7 +198,13 @@ partir das migrações.
   alfanumérico, que vale a partir de 31/07/2026.
 - **Cadastro não se apaga** — `DELETE /recurso/{id}` desativa (`ativo = false`). Documentos de
   venda vão **cancelar** (`POST /{id}/cancelar`), a partir da S4.
-- **Erro sai sempre no mesmo envelope**: `{"erro": {"codigo", "mensagem", "campos"}}`.
+- **Erro sai sempre no mesmo envelope**: `{"erro": {"codigo", "mensagem", "campos"}}` —
+  modelado em `EnvelopeErro` (`app/core/errors.py`) e publicado no contrato, porque o front
+  gera o cliente a partir do OpenAPI e precisa conhecer também os caminhos de erro.
+- **Falha se declara onde ela nasce.** A dependência que exige token, empresa ou permissão
+  declara a sua com `pode_falhar(...)`, e a rota herda pelo grafo do FastAPI; a rota só
+  declara o que apenas o serviço sabe (404, 409, regra de negócio). Nenhuma rota escreve
+  `responses=` à mão — 55 listas paralelas divergiriam na primeira rota nova.
 - **Toda rota mutante** passa por `Depends(require(recurso, acao))`, e o par precisa estar no
   catálogo de `app/core/permissions.py` — errar o nome estoura na importação, não em produção.
 - **`ordenar_por` é whitelist** por recurso, declarada no `ListingSpec`.

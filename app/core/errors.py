@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, TypeVar
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -75,8 +78,123 @@ class SemPermissao(ErroDominio):
         self.acao = acao
 
 
+class ErroDetalhe(BaseModel):
+    codigo: str = Field(
+        description=(
+            "Identificador estável da falha — é por ele que o cliente decide o que fazer, "
+            "nunca pela mensagem."
+        ),
+        examples=["nao_encontrado"],
+    )
+    mensagem: str = Field(
+        description="Texto pronto para exibição, em português.",
+        examples=["Empresa 6f1c… não encontrado."],
+    )
+    campos: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Detalhe por campo, quando existe: em `validacao` é `campo → motivo`; nas demais, "
+            "o contexto da falha. Pode vir vazio."
+        ),
+    )
+
+
+class EnvelopeErro(BaseModel):
+    """O corpo de **toda** resposta de erro da API, do 400 ao 500.
+
+    Existe como modelo, e não só como o dicionário que o handler monta, porque o contrato
+    OpenAPI é o substituto do tRPC para o front: sem um schema aqui, o cliente gerado não
+    conhece nenhum caminho de erro. `envelope()` constrói por este modelo justamente para
+    que documentação e resposta não possam divergir.
+    """
+
+    erro: ErroDetalhe
+
+
 def envelope(codigo: str, mensagem: str, campos: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"erro": {"codigo": codigo, "mensagem": mensagem, "campos": campos or {}}}
+    detalhe = ErroDetalhe(codigo=codigo, mensagem=mensagem, campos=campos or {})
+    return EnvelopeErro(erro=detalhe).model_dump(mode="json")
+
+
+# --- o que cada rota pode responder de errado --------------------------------
+
+ATRIBUTO_FALHAS = "__vitra_falhas__"
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+@dataclass(frozen=True)
+class Falha:
+    """Uma resposta de erro possível, do jeito que ela sai na resposta de verdade.
+
+    `app/core/openapi.py` recolhe as falhas de cada rota e as escreve no contrato. O
+    exemplo publicado sai de `envelope()` — a mesma função do handler —, então um campo
+    que mude de nome muda nos dois lugares de uma vez.
+    """
+
+    status: int
+    codigo: str
+    descricao: str
+    mensagem: str
+    campos: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def exemplo(self) -> dict[str, Any]:
+        return envelope(self.codigo, self.mensagem, self.campos)
+
+
+def pode_falhar(*falhas: Falha) -> Callable[[F], F]:
+    """Declara falhas que só o corpo da rota conhece — 404, 409, regra de negócio.
+
+    As falhas da borda (token, empresa, permissão, ordenação) não usam isto: elas são
+    declaradas **na dependência** que as levanta e chegam à rota pelo grafo do FastAPI,
+    para que nenhuma rota precise repetir o que já depende.
+    """
+
+    def marcar(alvo: F) -> F:
+        anteriores: tuple[Falha, ...] = getattr(alvo, ATRIBUTO_FALHAS, ())
+        setattr(alvo, ATRIBUTO_FALHAS, (*anteriores, *falhas))
+        return alvo
+
+    return marcar
+
+
+NAO_AUTENTICADO = Falha(
+    status=NaoAutenticado.http_status,
+    codigo=NaoAutenticado.codigo,
+    descricao="Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+    mensagem="Credenciais ausentes ou inválidas.",
+)
+
+NAO_ENCONTRADO = Falha(
+    status=NaoEncontrado.http_status,
+    codigo=NaoEncontrado.codigo,
+    descricao="O identificador da rota não corresponde a nenhum registro visível.",
+    mensagem="Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+)
+
+CONFLITO = Falha(
+    status=Conflito.http_status,
+    codigo=Conflito.codigo,
+    descricao="Viola unicidade ou um vínculo do banco — código, login ou e-mail repetido.",
+    mensagem="Já existe empresa com código 'VITRA'.",
+    campos={"codigo": "já utilizado"},
+)
+
+REGRA_DE_NEGOCIO = Falha(
+    status=RegraDeNegocio.http_status,
+    codigo=RegraDeNegocio.codigo,
+    descricao="A operação é sintaticamente válida, mas o domínio a recusa.",
+    mensagem="Um usuário não pode desativar a si mesmo.",
+)
+
+VALIDACAO = Falha(
+    status=HTTP_422,
+    codigo="validacao",
+    descricao="Corpo, query ou cabeçalho fora do schema.",
+    mensagem="Dados inválidos.",
+    campos={"nome": "Field required"},
+)
 
 
 def registrar_handlers(app: FastAPI) -> None:

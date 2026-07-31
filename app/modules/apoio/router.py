@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.deps import Sessao, UsuarioAtual
+from app.core.errors import CONFLITO, NAO_ENCONTRADO, pode_falhar
 from app.core.listing import ListParams, LookupItem, Pagina
 from app.core.permissions import Acao, require
 from app.modules.apoio.models import DominioApoio
@@ -62,6 +63,7 @@ async def lookup_apoio(
 
 
 @router_apoio.post("/{dominio}", response_model=ApoioSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_apoio(
     dominio: DominioApoio,
     dados: ApoioCriar,
@@ -74,6 +76,7 @@ async def criar_apoio(
 
 
 @router_apoio.get("/{dominio}/{item_id}", response_model=ApoioSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_apoio(
     dominio: DominioApoio,
     item_id: uuid.UUID,
@@ -84,6 +87,7 @@ async def obter_apoio(
 
 
 @router_apoio.put("/{dominio}/{item_id}", response_model=ApoioSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_apoio(
     dominio: DominioApoio,
     item_id: uuid.UUID,
@@ -96,6 +100,7 @@ async def atualizar_apoio(
 
 
 @router_apoio.delete("/{dominio}/{item_id}", response_model=ApoioSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def desativar_apoio(
     dominio: DominioApoio,
     item_id: uuid.UUID,
@@ -130,6 +135,7 @@ async def lookup_cidades(
 
 
 @router_cidades.post("", response_model=CidadeSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_cidade(
     dados: CidadeCriar,
     session: Sessao,
@@ -141,6 +147,7 @@ async def criar_cidade(
 
 
 @router_cidades.put("/{cidade_id}", response_model=CidadeSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_cidade(
     cidade_id: uuid.UUID,
     dados: CidadeAtualizar,
@@ -171,6 +178,7 @@ async def lookup_bancos(
 
 
 @router_bancos.post("", response_model=BancoSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_banco(
     dados: BancoCriar,
     session: Sessao,
@@ -180,6 +188,7 @@ async def criar_banco(
 
 
 @router_bancos.put("/{banco_id}", response_model=BancoSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_banco(
     banco_id: uuid.UUID,
     dados: BancoAtualizar,

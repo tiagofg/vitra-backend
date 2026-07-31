@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.deps import Sessao
+from app.core.errors import CONFLITO, NAO_ENCONTRADO, REGRA_DE_NEGOCIO, pode_falhar
 from app.core.listing import ListParams, LookupItem, Pagina
 from app.core.permissions import Acao, require
 from app.modules.auth.models import Usuario
@@ -47,6 +48,7 @@ async def lookup_empresas(
 
 
 @router_empresas.post("", response_model=EmpresaSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_empresa(
     dados: EmpresaCriar,
     session: Sessao,
@@ -56,6 +58,7 @@ async def criar_empresa(
 
 
 @router_empresas.get("/{empresa_id}", response_model=EmpresaSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_empresa(
     empresa_id: uuid.UUID,
     session: Sessao,
@@ -65,6 +68,7 @@ async def obter_empresa(
 
 
 @router_empresas.put("/{empresa_id}", response_model=EmpresaSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_empresa(
     empresa_id: uuid.UUID,
     dados: EmpresaAtualizar,
@@ -76,6 +80,7 @@ async def atualizar_empresa(
 
 
 @router_empresas.delete("/{empresa_id}", response_model=EmpresaSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def desativar_empresa(
     empresa_id: uuid.UUID,
     session: Sessao,
@@ -95,6 +100,7 @@ async def listar_filiais(
 
 
 @router_filiais.post("", response_model=FilialSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_filial(
     dados: FilialCriar,
     session: Sessao,
@@ -104,6 +110,7 @@ async def criar_filial(
 
 
 @router_filiais.get("/{filial_id}", response_model=FilialSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_filial(
     filial_id: uuid.UUID,
     session: Sessao,
@@ -113,6 +120,7 @@ async def obter_filial(
 
 
 @router_filiais.put("/{filial_id}", response_model=FilialSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO)
 async def atualizar_filial(
     filial_id: uuid.UUID,
     dados: FilialAtualizar,
@@ -124,6 +132,7 @@ async def atualizar_filial(
 
 
 @router_filiais.delete("/{filial_id}", response_model=FilialSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def desativar_filial(
     filial_id: uuid.UUID,
     session: Sessao,
@@ -143,6 +152,7 @@ async def listar_centros_custo(
 
 
 @router_centros_custo.post("", response_model=CentroCustoSaida, status_code=status.HTTP_201_CREATED)
+@pode_falhar(CONFLITO)
 async def criar_centro_custo(
     dados: CentroCustoCriar,
     session: Sessao,
@@ -153,6 +163,7 @@ async def criar_centro_custo(
 
 
 @router_centros_custo.get("/{centro_id}", response_model=CentroCustoSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def obter_centro_custo(
     centro_id: uuid.UUID,
     session: Sessao,
@@ -162,6 +173,7 @@ async def obter_centro_custo(
 
 
 @router_centros_custo.put("/{centro_id}", response_model=CentroCustoSaida)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO, REGRA_DE_NEGOCIO)
 async def atualizar_centro_custo(
     centro_id: uuid.UUID,
     dados: CentroCustoAtualizar,
@@ -173,6 +185,7 @@ async def atualizar_centro_custo(
 
 
 @router_centros_custo.delete("/{centro_id}", response_model=CentroCustoSaida)
+@pode_falhar(NAO_ENCONTRADO)
 async def desativar_centro_custo(
     centro_id: uuid.UUID,
     session: Sessao,
