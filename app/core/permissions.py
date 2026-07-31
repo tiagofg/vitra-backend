@@ -42,9 +42,7 @@ def pares_do_catalogo() -> list[tuple[str, str]]:
     return [(recurso, acao.value) for recurso, acoes in CATALOGO.items() for acao in acoes]
 
 
-def require(
-    recurso: str, acao: Acao | str
-) -> Callable[[Usuario], Coroutine[Any, Any, Usuario]]:
+def require(recurso: str, acao: Acao | str) -> Callable[[Usuario], Coroutine[Any, Any, Usuario]]:
     """Dependência de rota: `Depends(require("apoio", Acao.criar))`.
 
     Espelha `Controle de Acesso → Permissões de Acesso` do legado: a permissão é o par

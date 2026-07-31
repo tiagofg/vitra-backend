@@ -88,24 +88,16 @@ class GrupoService(BaseService[Grupo, GrupoCriar, GrupoAtualizar]):
     async def _checar_nome_livre(self, nome: str | None) -> None:
         if nome is None:
             return
-        existe = (
-            await self.session.execute(select(Grupo.id).where(Grupo.nome == nome))
-        ).first()
+        existe = (await self.session.execute(select(Grupo.id).where(Grupo.nome == nome))).first()
         if existe:
-            raise Conflito(
-                f"Já existe um grupo chamado '{nome}'.", campos={"nome": "já utilizado"}
-            )
+            raise Conflito(f"Já existe um grupo chamado '{nome}'.", campos={"nome": "já utilizado"})
 
     async def definir_permissoes(
         self, grupo_id: uuid.UUID, permissao_ids: list[uuid.UUID]
     ) -> Grupo:
         grupo = await self.obter(grupo_id)
         permissoes = list(
-            (
-                await self.session.execute(
-                    select(Permissao).where(Permissao.id.in_(permissao_ids))
-                )
-            )
+            (await self.session.execute(select(Permissao).where(Permissao.id.in_(permissao_ids))))
             .scalars()
             .all()
         )

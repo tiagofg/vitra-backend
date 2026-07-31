@@ -37,9 +37,7 @@ async def test_crud_de_empresa(cliente: AsyncClient, cabecalho_admin: dict[str, 
     # PUT parcial não apaga o que não veio no corpo.
     assert atualizado.json()["endereco_logradouro"] == "Av. Paulista"
 
-    desativado = await cliente.delete(
-        f"/api/v1/empresas/{empresa_id}", headers=cabecalho_admin
-    )
+    desativado = await cliente.delete(f"/api/v1/empresas/{empresa_id}", headers=cabecalho_admin)
     assert desativado.status_code == 200
     assert desativado.json()["ativo"] is False
 

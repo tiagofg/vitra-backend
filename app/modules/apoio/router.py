@@ -35,8 +35,7 @@ router_ufs = APIRouter(prefix="/ufs", tags=["apoio"])
 async def listar_dominios(_: UsuarioAtual) -> list[DominioSaida]:
     """Os 19 combos das telas, um por domínio."""
     return [
-        DominioSaida(dominio=d, rotulo=d.value.replace("_", " ").capitalize())
-        for d in DominioApoio
+        DominioSaida(dominio=d, rotulo=d.value.replace("_", " ").capitalize()) for d in DominioApoio
     ]
 
 

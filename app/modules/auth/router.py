@@ -49,9 +49,7 @@ async def refresh(dados: RefreshEntrada, session: Sessao) -> TokenSaida:
 
 
 @router_auth.post("/alterar-senha", status_code=status.HTTP_204_NO_CONTENT)
-async def alterar_senha(
-    dados: AlterarSenhaEntrada, session: Sessao, usuario: UsuarioAtual
-) -> None:
+async def alterar_senha(dados: AlterarSenhaEntrada, session: Sessao, usuario: UsuarioAtual) -> None:
     await AuthService(session).alterar_senha(usuario, dados.senha_atual, dados.senha_nova)
 
 

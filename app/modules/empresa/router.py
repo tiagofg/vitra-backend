@@ -142,9 +142,7 @@ async def listar_centros_custo(
     return await CentroCustoService(session).listar(params, CentroCustoSaida.model_validate)
 
 
-@router_centros_custo.post(
-    "", response_model=CentroCustoSaida, status_code=status.HTTP_201_CREATED
-)
+@router_centros_custo.post("", response_model=CentroCustoSaida, status_code=status.HTTP_201_CREATED)
 async def criar_centro_custo(
     dados: CentroCustoCriar,
     session: Sessao,

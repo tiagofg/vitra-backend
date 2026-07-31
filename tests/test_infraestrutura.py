@@ -25,27 +25,17 @@ class FilialItem(BaseModel):
 # --- numeração de documento --------------------------------------------------
 
 
-async def test_numeracao_e_sequencial_por_serie(
-    sessao: AsyncSession, empresa: Empresa
-) -> None:
+async def test_numeracao_e_sequencial_por_serie(sessao: AsyncSession, empresa: Empresa) -> None:
     numeros = [
-        await proximo_numero(
-            sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1"
-        )
+        await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
         for _ in range(3)
     ]
     assert numeros == [1, 2, 3]
 
 
-async def test_series_e_tipos_contam_separado(
-    sessao: AsyncSession, empresa: Empresa
-) -> None:
-    a = await proximo_numero(
-        sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1"
-    )
-    b = await proximo_numero(
-        sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="2"
-    )
+async def test_series_e_tipos_contam_separado(sessao: AsyncSession, empresa: Empresa) -> None:
+    a = await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
+    b = await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="2")
     c = await proximo_numero(
         sessao, empresa_id=empresa.id, tipo=TipoDocumento.pedido_compra, serie="1"
     )
@@ -60,9 +50,7 @@ async def test_empresas_diferentes_nao_compartilham_numeracao(
     await sessao.flush()
 
     await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento)
-    numero = await proximo_numero(
-        sessao, empresa_id=outra.id, tipo=TipoDocumento.orcamento
-    )
+    numero = await proximo_numero(sessao, empresa_id=outra.id, tipo=TipoDocumento.orcamento)
     assert numero == 1
 
 

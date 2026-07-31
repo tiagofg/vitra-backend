@@ -83,12 +83,8 @@ async def test_ordenar_por_campo_fora_da_whitelist_e_recusado(
     assert resposta.json()["erro"]["codigo"] == "ordenacao_invalida"
 
 
-async def test_busca_textual_filtra(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str]
-) -> None:
-    await cliente.post(
-        "/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin
-    )
+async def test_busca_textual_filtra(cliente: AsyncClient, cabecalho_admin: dict[str, str]) -> None:
+    await cliente.post("/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin)
     await cliente.post(
         "/api/v1/apoio/marca", json={"descricao": "Bella Luce"}, headers=cabecalho_admin
     )
@@ -127,9 +123,7 @@ async def test_filtro_por_ativo(cliente: AsyncClient, cabecalho_admin: dict[str,
     await cliente.post(
         "/api/v1/apoio/marca", json={"descricao": "Bella Luce"}, headers=cabecalho_admin
     )
-    await cliente.delete(
-        f"/api/v1/apoio/marca/{primeiro.json()['id']}", headers=cabecalho_admin
-    )
+    await cliente.delete(f"/api/v1/apoio/marca/{primeiro.json()['id']}", headers=cabecalho_admin)
 
     ativos = await cliente.get(
         "/api/v1/apoio/marca", params={"ativo": True}, headers=cabecalho_admin

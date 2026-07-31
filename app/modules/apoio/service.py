@@ -83,8 +83,10 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
 
     async def _antes_de_atualizar(self, obj: TabelaApoio, valores: dict[str, Any]) -> None:
         novo_codigo = valores.get("codigo")
-        if novo_codigo and novo_codigo != obj.codigo and await self._existe(
-            novo_codigo, obj.empresa_id
+        if (
+            novo_codigo
+            and novo_codigo != obj.codigo
+            and await self._existe(novo_codigo, obj.empresa_id)
         ):
             raise Conflito(
                 f"Já existe '{novo_codigo}' no domínio '{self.dominio.value}'.",

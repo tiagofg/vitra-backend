@@ -66,11 +66,13 @@ async def test_mesmo_codigo_em_dominios_diferentes_convive(
 ) -> None:
     """Uma tabela para 19 combos só funciona se o domínio isolar de verdade."""
     a = await cliente.post(
-        "/api/v1/apoio/marca", json={"descricao": "Preto", "codigo": "preto"},
+        "/api/v1/apoio/marca",
+        json={"descricao": "Preto", "codigo": "preto"},
         headers=cabecalho_admin,
     )
     b = await cliente.post(
-        "/api/v1/apoio/acabamento", json={"descricao": "Preto", "codigo": "preto"},
+        "/api/v1/apoio/acabamento",
+        json={"descricao": "Preto", "codigo": "preto"},
         headers=cabecalho_admin,
     )
     assert a.status_code == 201
@@ -80,9 +82,7 @@ async def test_mesmo_codigo_em_dominios_diferentes_convive(
 async def test_listagem_nao_vaza_entre_dominios(
     cliente: AsyncClient, cabecalho_admin: dict[str, str]
 ) -> None:
-    await cliente.post(
-        "/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin
-    )
+    await cliente.post("/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin)
     resposta = await cliente.get("/api/v1/apoio/acabamento", headers=cabecalho_admin)
     assert resposta.json()["total"] == 0
 
@@ -108,9 +108,7 @@ async def test_dominio_inexistente_e_rejeitado(
 async def test_lookup_devolve_formato_padronizado(
     cliente: AsyncClient, cabecalho_admin: dict[str, str]
 ) -> None:
-    await cliente.post(
-        "/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin
-    )
+    await cliente.post("/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin)
     await cliente.post(
         "/api/v1/apoio/marca", json={"descricao": "Bella Luce"}, headers=cabecalho_admin
     )
@@ -128,9 +126,7 @@ async def test_lookup_devolve_formato_padronizado(
 async def test_lookup_por_empresa_inclui_valores_globais(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
-    await cliente.post(
-        "/api/v1/apoio/marca", json={"descricao": "Global"}, headers=cabecalho_admin
-    )
+    await cliente.post("/api/v1/apoio/marca", json={"descricao": "Global"}, headers=cabecalho_admin)
     await cliente.post(
         "/api/v1/apoio/marca",
         json={"descricao": "Só da Vertz", "empresa_id": str(empresa.id)},
@@ -166,9 +162,7 @@ async def test_lookup_ignora_desativados(
     assert ainda_la.status_code == 200
 
 
-async def test_atualizar_descricao(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str]
-) -> None:
+async def test_atualizar_descricao(cliente: AsyncClient, cabecalho_admin: dict[str, str]) -> None:
     criado = await cliente.post(
         "/api/v1/apoio/marca", json={"descricao": "Lumini"}, headers=cabecalho_admin
     )

@@ -28,9 +28,7 @@ async def test_criar_grupo_e_conceder_permissoes(
     assert concedido.status_code == 200
     assert {p["recurso"] for p in concedido.json()["permissoes"]} == {"banco"}
 
-    listado = await cliente.get(
-        f"/api/v1/grupos/{grupo_id}/permissoes", headers=cabecalho_admin
-    )
+    listado = await cliente.get(f"/api/v1/grupos/{grupo_id}/permissoes", headers=cabecalho_admin)
     assert len(listado.json()) == len(alvo)
 
 
@@ -42,9 +40,7 @@ async def test_put_de_permissoes_substitui_o_conjunto(
     )
     grupo_id = grupo.json()["id"]
     bancos = [str(p.id) for p in permissoes if p.recurso == "banco"]
-    apoio_ler = [
-        str(p.id) for p in permissoes if p.recurso == "apoio" and p.acao == "ler"
-    ]
+    apoio_ler = [str(p.id) for p in permissoes if p.recurso == "apoio" and p.acao == "ler"]
 
     await cliente.put(
         f"/api/v1/grupos/{grupo_id}/permissoes",
@@ -74,9 +70,7 @@ async def test_permissao_inexistente_no_grupo_da_404(
     assert resposta.status_code == 404
 
 
-async def test_nome_de_grupo_e_unico(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str]
-) -> None:
+async def test_nome_de_grupo_e_unico(cliente: AsyncClient, cabecalho_admin: dict[str, str]) -> None:
     await cliente.post("/api/v1/grupos", json={"nome": "Compras"}, headers=cabecalho_admin)
     repetido = await cliente.post(
         "/api/v1/grupos", json={"nome": "Compras"}, headers=cabecalho_admin
@@ -163,9 +157,7 @@ async def test_admin_redefine_senha_de_outro_usuario(
 async def test_usuario_nao_desativa_a_si_mesmo(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], admin: Usuario
 ) -> None:
-    resposta = await cliente.delete(
-        f"/api/v1/usuarios/{admin.id}", headers=cabecalho_admin
-    )
+    resposta = await cliente.delete(f"/api/v1/usuarios/{admin.id}", headers=cabecalho_admin)
     assert resposta.status_code == 422
     assert resposta.json()["erro"]["codigo"] == "regra_de_negocio"
 
