@@ -19,7 +19,9 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.core.tenancy import declarar_empresa
+from app.core.security import criar_token, gerar_hash_senha
+from app.core.tenancy import GUC_EMPRESA, declarar_empresa
+from app.modules.auth.models import Usuario
 from app.modules.bakeoff.models import (
     Colaborador,
     ColaboradorEmpresa,
@@ -30,7 +32,16 @@ from app.modules.bakeoff.models import (
     Variante,
 )
 
-SQL_DECLARAR = text("SELECT set_config('app.current_tenant', :empresa, true)")
+# Lê `GUC_EMPRESA` em vez de repetir a string. Não é a linha duplicada que custa: com o
+# nome literal aqui, renomear o GUC deixaria `test_guc_vazio_nao_estoura_o_cast` **verde**
+# — ele passaria a setar um GUC que ninguém lê, o SELECT voltaria vazio de qualquer forma
+# e o `assert linhas == []` seria satisfeito por acidente. O teste que existe para provar o
+# NULLIF pararia de provar qualquer coisa, sem nenhum sinal.
+SQL_DECLARAR = text(f"SELECT set_config('{GUC_EMPRESA}', :empresa, true)")
+
+# Calculado uma vez: o argon2 é lento de propósito, e nenhum teste daqui faz login — os
+# tokens são emitidos direto. Repetir o hash por usuário criado só queimaria segundos.
+_HASH_DESCARTAVEL = gerar_hash_senha("senha-de-teste-123")
 
 
 @dataclass(frozen=True)
@@ -120,6 +131,73 @@ async def _catalogo_da_empresa(
         )
         await sessao.commit()
         return sem_preco.id
+
+
+async def criar_usuario_vinculado(
+    motor: AsyncEngine,
+    cenario: Cenario,
+    *,
+    empresas: tuple[uuid.UUID, ...],
+    sufixo_login: str = "",
+) -> tuple[uuid.UUID, str]:
+    """Cria quem loga (`usuario`), quem trabalha (`employees`) e o vínculo entre eles.
+
+    São duas tabelas para a mesma pessoa: o schema fixo do bake-off tem
+    `employees(id, name, email, active)`, sem senha, e a S0 guarda credencial em `usuario`.
+    A ponte é o e-mail — o mesmo caminho que `_tem_vinculo` percorre em produção.
+
+    `empresas` é a lista de onde a pessoa tem vínculo. Passar uma só é o que permite testar
+    o 403: autenticado, mas pedindo a empresa do vizinho.
+
+    Devolve `(usuario_id, token)`. O token é emitido direto em vez de passar pelo login —
+    a suíte não está testando autenticação aqui, e o argon2 do login custa caro por teste.
+    """
+    email = f"pessoa{sufixo_login}+{cenario.sufixo}@grupo.dev"
+
+    async with AsyncSession(motor, expire_on_commit=False) as sessao:
+        usuario = Usuario(
+            login=f"user{sufixo_login}-{cenario.sufixo}",
+            nome="Pessoa de Teste",
+            email=email,
+            senha_hash=_HASH_DESCARTAVEL,
+        )
+        sessao.add(usuario)
+
+        pessoa = Colaborador(name="Pessoa de Teste", email=email, active=True)
+        sessao.add(pessoa)
+        await sessao.commit()
+
+    for empresa_id in empresas:
+        async with AsyncSession(motor, expire_on_commit=False) as sessao:
+            await declarar_empresa(sessao, empresa_id)
+            sessao.add(
+                ColaboradorEmpresa(
+                    tenant_id=empresa_id,
+                    employee_id=pessoa.id,
+                    role=PapelEmpresa.operator_full.value,
+                )
+            )
+            await sessao.commit()
+
+    return usuario.id, criar_token(usuario.id)
+
+
+async def criar_usuario_sem_email(motor: AsyncEngine, cenario: Cenario) -> str:
+    """Usuário que loga mas não tem como ser ligado a `employees`.
+
+    `Usuario.email` é nulável na S0, então este caso existe de verdade. A alternativa a
+    negar — tratar a ausência como "não dá para checar, então deixa passar" — seria o mesmo
+    furo com outra cara. Devolve o token.
+    """
+    async with AsyncSession(motor, expire_on_commit=False) as sessao:
+        usuario = Usuario(
+            login=f"sem-email-{cenario.sufixo}",
+            nome="Sem e-mail",
+            senha_hash=_HASH_DESCARTAVEL,
+        )
+        sessao.add(usuario)
+        await sessao.commit()
+    return criar_token(usuario.id)
 
 
 async def criar_colaborador_nos_dois(

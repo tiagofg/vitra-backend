@@ -3706,6 +3706,11 @@
         "summary": "Listar Produtos",
         "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\nDevolve `{itens, total, pagina, tamanho, paginas}` — o contrato que o TanStack Table\nserver-side do front espera. `empresa_id` **não** é parâmetro: a empresa vem do\ncabeçalho `X-Empresa-Id` e entra na transação, não na query string.",
         "operationId": "listar_produtos_api_v1_produtos_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "busca",
@@ -3845,10 +3850,10 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa (tenant_id).",
+              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
               "title": "X-Empresa-Id"
             },
-            "description": "UUID da empresa ativa (tenant_id)."
+            "description": "UUID da empresa ativa (tenant_id) para este pedido."
           }
         ],
         "responses": {
@@ -3880,6 +3885,11 @@
         ],
         "summary": "Criar Produto",
         "operationId": "criar_produto_api_v1_produtos_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "x-empresa-id",
@@ -3895,10 +3905,10 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa (tenant_id).",
+              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
               "title": "X-Empresa-Id"
             },
-            "description": "UUID da empresa ativa (tenant_id)."
+            "description": "UUID da empresa ativa (tenant_id) para este pedido."
           }
         ],
         "requestBody": {
@@ -3941,7 +3951,7 @@
           "bake-off"
         ],
         "summary": "Listar Empresas",
-        "description": "`tenants` é global e não tem RLS — é a raiz do recorte, não algo recortado.\n\nDepende de `Sessao`, não de `SessaoEmpresa`: exigir empresa declarada para descobrir\nquais empresas existem seria um ovo que precisa da galinha.",
+        "description": "`tenants` é global e não tem RLS — é a raiz do recorte, não algo recortado.\n\nDepende de `Sessao`, não de `SessaoEmpresa`: exigir empresa declarada para descobrir\nquais empresas existem seria um ovo que precisa da galinha. Por isso o `UsuarioAtual`\nexplícito — é a única rota do módulo em que a autenticação não vem de carona.\n\nEla devolve razão social e CNPJ de todas as empresas do grupo. Não é dado secreto, mas\ntambém não é dado público: sem o token, isto era um diretório aberto do grupo Vertz.",
         "operationId": "listar_empresas_api_v1_bakeoff_empresas_get",
         "responses": {
           "200": {
@@ -3958,7 +3968,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/bakeoff/empresas/papeis": {
@@ -3969,6 +3984,11 @@
         "summary": "Listar Papeis",
         "description": "Papéis da empresa ativa. ANA SILVA aparece com papel diferente em cada uma.",
         "operationId": "listar_papeis_api_v1_bakeoff_empresas_papeis_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "x-empresa-id",
@@ -3984,10 +4004,10 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa (tenant_id).",
+              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
               "title": "X-Empresa-Id"
             },
-            "description": "UUID da empresa ativa (tenant_id)."
+            "description": "UUID da empresa ativa (tenant_id) para este pedido."
           }
         ],
         "responses": {
@@ -6700,7 +6720,7 @@
           "descricao"
         ],
         "title": "ProdutoCriar",
-        "description": "Escrita existe para provar o RLS, não para cobrir o cadastro real (isso é a S2).\n\nRepare no que **não** está aqui: `tenant_id`. A empresa vem da transação, nunca do\ncorpo — aceitá-la seria deixar o cliente escolher em qual empresa escreve."
+        "description": "Escrita existe para provar o RLS, não para cobrir o cadastro real (isso é a S2).\n\nRepare no que **não** está aqui: `tenant_id`. A empresa vem do cabeçalho, é conferida\ncontra o vínculo do usuário em `employee_company` e só então entra na transação — ver\n`app/modules/bakeoff/deps.py`. Aceitá-la no corpo daria dois caminhos para a mesma\ndecisão, e o segundo passaria longe da checagem."
       },
       "ProdutoSaida": {
         "properties": {

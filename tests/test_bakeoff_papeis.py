@@ -51,11 +51,11 @@ async def test_identidade_do_colaborador_e_unica_no_grupo(
 
 
 async def test_rota_de_papeis_so_mostra_a_empresa_ativa(
-    cliente_bakeoff: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario
+    autenticado: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario
 ) -> None:
     pessoa_id = await criar_colaborador_nos_dois(motor_runtime, cenario)
 
-    resposta = await cliente_bakeoff.get(
+    resposta = await autenticado.get(
         "/api/v1/bakeoff/empresas/papeis",
         headers={"X-Empresa-Id": str(cenario.uva)},
     )

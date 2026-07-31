@@ -38,7 +38,12 @@ from app.core.security import gerar_hash_senha  # noqa: E402
 from app.main import criar_app  # noqa: E402
 from app.modules.auth.models import Grupo, Permissao, Usuario  # noqa: E402
 from app.modules.empresa.models import Empresa  # noqa: E402
-from tests.bakeoff import Cenario, montar_cenario  # noqa: E402
+from tests.bakeoff import (  # noqa: E402
+    Cenario,
+    criar_usuario_sem_email,
+    criar_usuario_vinculado,
+    montar_cenario,
+)
 
 SENHA_PADRAO = "senha-de-teste-123"
 
@@ -184,8 +189,59 @@ async def app_bakeoff() -> AsyncIterator[FastAPI]:
 
 @pytest.fixture
 async def cliente_bakeoff(app_bakeoff: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Cliente **sem** credencial. Serve para provar que as rotas exigem token."""
     transporte = ASGITransport(app=app_bakeoff)
     async with AsyncClient(transport=transporte, base_url="http://teste") as c:
+        yield c
+
+
+@pytest.fixture
+async def token_das_duas(motor_runtime: AsyncEngine, cenario: Cenario) -> str:
+    """Token de quem tem vínculo com as **duas** empresas — o caso da ANA SILVA."""
+    _, token = await criar_usuario_vinculado(
+        motor_runtime, cenario, empresas=(cenario.abacaxi, cenario.uva)
+    )
+    return token
+
+
+@pytest.fixture
+async def token_so_abacaxi(motor_runtime: AsyncEngine, cenario: Cenario) -> str:
+    """Token de quem só trabalha na ABACAXI. Pedir a UVA com ele tem que dar 403."""
+    _, token = await criar_usuario_vinculado(
+        motor_runtime, cenario, empresas=(cenario.abacaxi,), sufixo_login="-aba"
+    )
+    return token
+
+
+def _cliente_com_token(app: FastAPI, token: str) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://teste",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+@pytest.fixture
+async def autenticado(app_bakeoff: FastAPI, token_das_duas: str) -> AsyncIterator[AsyncClient]:
+    """Cliente já com o Bearer no cabeçalho padrão — o caminho feliz das rotas do módulo."""
+    async with _cliente_com_token(app_bakeoff, token_das_duas) as c:
+        yield c
+
+
+@pytest.fixture
+async def so_abacaxi(app_bakeoff: FastAPI, token_so_abacaxi: str) -> AsyncIterator[AsyncClient]:
+    """Cliente de quem só trabalha na ABACAXI. Pedir a UVA com ele tem que dar 403."""
+    async with _cliente_com_token(app_bakeoff, token_so_abacaxi) as c:
+        yield c
+
+
+@pytest.fixture
+async def sem_email(
+    app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
+) -> AsyncIterator[AsyncClient]:
+    """Cliente de um usuário sem e-mail — a ponte para `employees` não fecha."""
+    token = await criar_usuario_sem_email(motor_runtime, cenario)
+    async with _cliente_com_token(app_bakeoff, token) as c:
         yield c
 
 

@@ -56,8 +56,10 @@ class ProdutoSaida(SaidaBase):
 class ProdutoCriar(BaseModel):
     """Escrita existe para provar o RLS, não para cobrir o cadastro real (isso é a S2).
 
-    Repare no que **não** está aqui: `tenant_id`. A empresa vem da transação, nunca do
-    corpo — aceitá-la seria deixar o cliente escolher em qual empresa escreve.
+    Repare no que **não** está aqui: `tenant_id`. A empresa vem do cabeçalho, é conferida
+    contra o vínculo do usuário em `employee_company` e só então entra na transação — ver
+    `app/modules/bakeoff/deps.py`. Aceitá-la no corpo daria dois caminhos para a mesma
+    decisão, e o segundo passaria longe da checagem.
     """
 
     model_config = ConfigDict(extra="forbid")

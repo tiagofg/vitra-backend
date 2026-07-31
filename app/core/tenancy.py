@@ -17,9 +17,7 @@ Duas garantias que valem repetir porque explicam o formato do código:
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
 
-from fastapi import Depends, Header
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +48,28 @@ class EmpresaNaoDeclarada(ErroDominio):
         super().__init__(
             "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
             campos={"X-Empresa-Id": "obrigatório"},
+        )
+
+
+class SemVinculoComEmpresa(ErroDominio):
+    """Quem pediu está autenticado, mas não trabalha na empresa que pediu.
+
+    É o que fecha a última brecha do desenho: sem esta checagem, o encadeamento seria
+    *RLS confia no GUC → GUC confia no cabeçalho → cabeçalho vem do cliente*, e a política
+    do Postgres — impecável — estaria protegendo um recorte escolhido por quem chama.
+
+    403 e não 404: dizer "não encontrado" esconderia de propósito a existência da empresa,
+    e o `tenant_id` não é segredo (ele aparece em `GET /bakeoff/empresas`). O que é
+    controlado é o acesso, não a existência.
+    """
+
+    http_status = 403
+    codigo = "sem_vinculo_com_empresa"
+
+    def __init__(self, empresa_id: uuid.UUID) -> None:
+        super().__init__(
+            "Usuário não tem vínculo com a empresa informada.",
+            campos={"X-Empresa-Id": str(empresa_id)},
         )
 
 
@@ -87,29 +107,11 @@ def _ao_abrir_transacao(
     connection.execute(_SQL_DECLARAR, {"empresa": str(empresa_id)})
 
 
-# --- borda HTTP ---------------------------------------------------------------
-
-
-async def empresa_do_pedido(
-    x_empresa_id: Annotated[
-        uuid.UUID | None,
-        Header(description="UUID da empresa ativa (tenant_id)."),
-    ] = None,
-) -> uuid.UUID:
-    """De onde vem a empresa ativa.
-
-    Hoje: cabeçalho. Para o VITRA real a recomendação é *claim no JWT*, com o cabeçalho
-    sobrevivendo só para quem opera em mais de uma empresa — é o caso da ANA SILVA, que é
-    `admin` na ABACAXI e `operator-sales` na UVA. A decisão está aberta no plano; isolá-la
-    aqui é o que mantém a troca barata: muda esta função, mais nada.
-    """
-    if x_empresa_id is None:
-        raise EmpresaNaoDeclarada()
-    return x_empresa_id
-
-
-EmpresaDoPedido = Annotated[uuid.UUID, Depends(empresa_do_pedido)]
-
-# A dependência que junta sessão + empresa mora em `app/core/deps.py`: ela precisa de
-# `get_session`, e `db.py` importa este módulo para registrar o evento. Manter `tenancy`
-# sem dependência de `db` é o que evita o ciclo.
+# A borda HTTP — de onde vem a empresa e quem pode pedi-la — mora em
+# `app/modules/bakeoff/deps.py`. Ela precisa de `get_session`, de `usuario_atual` e das
+# tabelas do módulo; `db.py` importa este arquivo para registrar o evento, então manter
+# `tenancy` sem essas dependências é o que evita o ciclo de importação.
+#
+# Este módulo é só o mecanismo: como a empresa entra na transação, e o que fazer quando
+# ela falta ou não é do usuário. **Declarar não é autorizar** — quem decide se aquele
+# usuário pode operar naquela empresa é a dependência, antes de qualquer query de negócio.

@@ -18,7 +18,7 @@ from tests.bakeoff import Cenario
 
 
 async def test_pedidos_simultaneos_de_empresas_diferentes_nao_se_misturam(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
     """20 pedidos alternando empresa, contra um pool de 2 conexões.
 
@@ -29,7 +29,7 @@ async def test_pedidos_simultaneos_de_empresas_diferentes_nao_se_misturam(
 
     respostas = await asyncio.gather(
         *(
-            cliente_bakeoff.get("/api/v1/produtos", headers={"X-Empresa-Id": str(empresa)})
+            autenticado.get("/api/v1/produtos", headers={"X-Empresa-Id": str(empresa)})
             for empresa in empresas
         )
     )
@@ -53,7 +53,7 @@ async def test_pedidos_simultaneos_de_empresas_diferentes_nao_se_misturam(
 
 
 async def test_pedido_sem_cabecalho_de_empresa_falha_na_borda(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
     """Sem `X-Empresa-Id`, 400 — e não uma lista vazia enganosa.
 
@@ -61,31 +61,31 @@ async def test_pedido_sem_cabecalho_de_empresa_falha_na_borda(
     mas péssimo de depurar: parece dado sumido. Falhar explicitamente na borda troca uma
     investigação de meia hora por uma mensagem de erro.
     """
-    resposta = await cliente_bakeoff.get("/api/v1/produtos")
+    resposta = await autenticado.get("/api/v1/produtos")
 
     assert resposta.status_code == 400
     assert resposta.json()["erro"]["codigo"] == "empresa_nao_declarada"
 
 
 async def test_escrita_concorrente_fica_em_empresas_separadas(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
     """A escrita simultânea também não se mistura — e `tenant_id` nunca vem do corpo."""
     corpo_a = {"codigo": f"CONC-A-{cenario.sufixo}", "descricao": "Arandela concorrente A"}
     corpo_b = {"codigo": f"CONC-B-{cenario.sufixo}", "descricao": "Arandela concorrente B"}
 
     resposta_a, resposta_b = await asyncio.gather(
-        cliente_bakeoff.post(
+        autenticado.post(
             "/api/v1/produtos", json=corpo_a, headers={"X-Empresa-Id": str(cenario.abacaxi)}
         ),
-        cliente_bakeoff.post(
+        autenticado.post(
             "/api/v1/produtos", json=corpo_b, headers={"X-Empresa-Id": str(cenario.uva)}
         ),
     )
     assert resposta_a.status_code == 201, resposta_a.text
     assert resposta_b.status_code == 201, resposta_b.text
 
-    listagem = await cliente_bakeoff.get(
+    listagem = await autenticado.get(
         "/api/v1/produtos", headers={"X-Empresa-Id": str(cenario.abacaxi)}
     )
     codigos = {item["codigo"] for item in listagem.json()["itens"]}

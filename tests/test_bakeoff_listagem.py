@@ -92,9 +92,9 @@ def _cabecalho(empresa: uuid.UUID) -> dict[str, str]:
 
 
 async def test_pagina_tem_o_formato_que_o_tanstack_table_espera(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
-    resposta = await cliente_bakeoff.get("/api/v1/produtos", headers=_cabecalho(cenario.abacaxi))
+    resposta = await autenticado.get("/api/v1/produtos", headers=_cabecalho(cenario.abacaxi))
 
     assert resposta.status_code == 200
     corpo = resposta.json()
@@ -103,11 +103,11 @@ async def test_pagina_tem_o_formato_que_o_tanstack_table_espera(
 
 
 async def test_busca_textual_ignora_acento_e_caixa(
-    cliente_bakeoff: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
+    autenticado: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
 ) -> None:
     """Quem digita num campo de busca não põe acento. `orion` tem que achar `Órion`."""
     for termo in ("orion", "ÓRION", "Órion"):
-        resposta = await cliente_bakeoff.get(
+        resposta = await autenticado.get(
             "/api/v1/produtos",
             params={"busca": termo},
             headers=_cabecalho(cenario.abacaxi),
@@ -117,10 +117,10 @@ async def test_busca_textual_ignora_acento_e_caixa(
 
 
 async def test_preco_zero_e_diferente_de_sem_preco(
-    cliente_bakeoff: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
+    autenticado: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
 ) -> None:
     """`0` e `None` não podem colapsar. É o caso de borda mais fácil de errar em silêncio."""
-    resposta = await cliente_bakeoff.get(
+    resposta = await autenticado.get(
         "/api/v1/produtos", params={"tamanho": 200}, headers=_cabecalho(cenario.abacaxi)
     )
     por_codigo = {item["codigo"]: item for item in resposta.json()["itens"]}
@@ -136,12 +136,12 @@ async def test_preco_zero_e_diferente_de_sem_preco(
 
 
 async def test_filtro_ativo_separa_os_tres_estados(
-    cliente_bakeoff: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
+    autenticado: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
 ) -> None:
     """`ativo` ausente = todos; `true` = só ativos; `false` = só inativos."""
 
     async def codigos(**params: object) -> set[str]:
-        resposta = await cliente_bakeoff.get(
+        resposta = await autenticado.get(
             "/api/v1/produtos",
             params={"tamanho": 200, **params},
             headers=_cabecalho(cenario.abacaxi),
@@ -157,9 +157,9 @@ async def test_filtro_ativo_separa_os_tres_estados(
 
 
 async def test_ordenacao_e_paginacao_saem_do_servidor(
-    cliente_bakeoff: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
+    autenticado: AsyncClient, cenario: Cenario, catalogo_de_borda: dict[str, str]
 ) -> None:
-    crescente = await cliente_bakeoff.get(
+    crescente = await autenticado.get(
         "/api/v1/produtos",
         params={"ordenar_por": "code", "ordem": "asc", "tamanho": 200},
         headers=_cabecalho(cenario.abacaxi),
@@ -167,12 +167,12 @@ async def test_ordenacao_e_paginacao_saem_do_servidor(
     codigos = [item["codigo"] for item in crescente.json()["itens"]]
     assert codigos == sorted(codigos)
 
-    primeira = await cliente_bakeoff.get(
+    primeira = await autenticado.get(
         "/api/v1/produtos",
         params={"ordenar_por": "code", "pagina": 1, "tamanho": 2},
         headers=_cabecalho(cenario.abacaxi),
     )
-    segunda = await cliente_bakeoff.get(
+    segunda = await autenticado.get(
         "/api/v1/produtos",
         params={"ordenar_por": "code", "pagina": 2, "tamanho": 2},
         headers=_cabecalho(cenario.abacaxi),
@@ -187,10 +187,10 @@ async def test_ordenacao_e_paginacao_saem_do_servidor(
 
 
 async def test_ordenar_por_campo_fora_da_whitelist_e_recusado(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
     """`ordenar_por` vem do cliente e nunca pode virar SQL arbitrário."""
-    resposta = await cliente_bakeoff.get(
+    resposta = await autenticado.get(
         "/api/v1/produtos",
         params={"ordenar_por": "tenant_id"},
         headers=_cabecalho(cenario.abacaxi),
@@ -201,14 +201,14 @@ async def test_ordenar_por_campo_fora_da_whitelist_e_recusado(
 
 
 async def test_empresa_id_na_query_string_nao_muda_o_recorte(
-    cliente_bakeoff: AsyncClient, cenario: Cenario
+    autenticado: AsyncClient, cenario: Cenario
 ) -> None:
     """`empresa_id` saiu do contrato. Se sobrasse, reabriria por fora a porta do RLS.
 
     O parâmetro ainda existe em `ListParams` por causa das tabelas da S0 que não migraram;
     o que este teste garante é que ele **não tem efeito** sobre uma tabela sob RLS.
     """
-    resposta = await cliente_bakeoff.get(
+    resposta = await autenticado.get(
         "/api/v1/produtos",
         params={"empresa_id": str(cenario.uva), "tamanho": 200},
         headers=_cabecalho(cenario.abacaxi),
