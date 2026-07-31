@@ -16,7 +16,7 @@ Stack: Python 3.12 · FastAPI 0.140 · SQLAlchemy 2.0 async · asyncpg · Alembi
 | Tempo até os 4 testes verdes | **1 sessão** | sessão única, do `tenancy.py` ao verde |
 | Linhas de código (sem testes) | **2.580** no `app/` inteiro, das quais **315** no módulo do bake-off + **76** de `tenancy.py` + **241** de migração | linhas não-vazias e não-comentário |
 | Clareza da listagem server-side | — | é o outro que julga; ver `app/modules/bakeoff/service.py` |
-| Atrito com assistente de IA | **3 correções** | anotadas abaixo, na hora |
+| Atrito com assistente de IA | **3 correções** + 2 lacunas de segurança na revisão | anotadas abaixo, na hora |
 | Salvar pai+filhos | já existia | `substituir_conjunto` da S0 |
 | Experiência subjetiva | **4/5** | ver no fim |
 
@@ -48,6 +48,16 @@ Nenhuma alucinação de API do FastAPI ou do SQLAlchemy — o que era o palpite 
 ("FastAPI tende a ganhar neste critério, por estar mais presente no material de treino").
 As três correções são de canto de biblioteca, não de framework.
 
+**O que o critério não pega, e é o mais caro.** Nenhuma das três correções acima chega perto
+do que a revisão do PR #1 encontrou: quatro rotas sem autenticação e um tenant escolhido
+pelo cliente. Não foi erro de API — foi um raciocínio errado escrito com convicção num
+docstring, justificando a ausência do RBAC como se cobrisse a autenticação. Lint, tipos e
+102 testes verdes passaram por cima disso sem piscar.
+
+Vale para a comparação: "atrito com IA" mede quantas vezes o assistente erra a chamada de
+uma biblioteca. Não mede quantas vezes ele erra o desenho de forma plausível — e é a
+segunda que custa revisão humana. Nenhuma das três stacks vai pontuar diferente aqui.
+
 **Um viés a declarar para o Henrique:** este critério só é comparável se as três colunas
 forem preenchidas com o mesmo assistente e o mesmo nível de familiaridade prévia. Medido de
 outro jeito, ele mede o dev, não a stack.
@@ -76,6 +86,32 @@ Em ordem de custo, e nenhum deles é sobre o framework HTTP:
 Nada disso muda entre FastAPI e Litestar. **É tudo SQLAlchemy puro.**
 
 ---
+
+## A fronteira do que o RLS prova — e a lacuna que ele escondeu
+
+Registrado porque a primeira versão desta entrega confundiu as duas coisas, e a confusão é
+fácil de repetir em qualquer stack.
+
+**O RLS entrega imunidade a `WHERE` esquecido no serviço.** É real, é o que o bake-off
+mede, e é o que os 4 testes de isolamento provam. Nenhum desenvolvedor consegue vazar dado
+entre empresas escrevendo uma query descuidada — o banco não deixa.
+
+**O RLS não entrega imunidade a chamador malicioso.** Ele confia no GUC, o GUC vinha do
+cabeçalho `X-Empresa-Id`, e o cabeçalho vem do cliente. Na primeira versão nada conferia se
+quem pediu tinha vínculo com a empresa pedida, e as quatro rotas do módulo não exigiam
+credencial nenhuma — eram as únicas 4 operações sem `security` num contrato de 55. Quem
+soubesse um `tenant_id` lia e escrevia naquela empresa.
+
+Fechado em `app/modules/bakeoff/deps.py`: token obrigatório (401), empresa declarada (400),
+vínculo conferido em `employee_company` (403), nessa ordem, antes de qualquer query de
+negócio. A checagem roda **sob a própria política** — a empresa é declarada primeiro, então
+a consulta a `employee_company` já sai recortada, sem `WHERE tenant_id` escrito à mão.
+
+**O que isso diz para a comparação entre as três stacks:** o trabalho de RLS não termina no
+banco. Qualquer uma delas vai precisar de uma camada equivalente na borda, e o custo dela
+não aparece em "linhas do `tenancy.py`". Se os outros dois protótipos declararem o tenant
+por header sem verificar vínculo, estarão medindo a mesma metade que eu medi primeiro — e a
+coluna de linhas de código estará comparando entregas diferentes.
 
 ## O confundidor
 

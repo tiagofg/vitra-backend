@@ -52,9 +52,30 @@ Três consequências que mudam como se lê e se escreve o código aqui:
   roda a API, sem ser dono e sem `BYPASSRLS`. Conectar como dono ou superusuário faz o
   Postgres ignorar as políticas, e aí o RLS é decorativo.
 
-As rotas por empresa pedem o cabeçalho **`X-Empresa-Id`**. Para o VITRA real a recomendação é
-*claim no JWT*, com o cabeçalho sobrevivendo só para quem opera em mais de uma empresa — a
-decisão está aberta no plano, e isolada em `app/core/tenancy.py` para que a troca seja barata.
+### Declarar não é autorizar
+
+As rotas por empresa pedem token **e** o cabeçalho `X-Empresa-Id`, nesta ordem de checagem
+(`app/modules/bakeoff/deps.py`):
+
+| Pergunta | Falha com |
+|---|---|
+| Quem é? | `401` sem token |
+| Qual empresa? | `400` sem `X-Empresa-Id` |
+| Pode essa empresa? | `403` sem vínculo em `employee_company` |
+
+A terceira não é redundante com o RLS — é o que separa duas defesas diferentes:
+
+- o **RLS** entrega imunidade a `WHERE` esquecido no serviço;
+- a **borda HTTP** entrega imunidade a chamador malicioso.
+
+Sem a checagem de vínculo, o encadeamento seria *RLS confia no GUC → GUC confia no cabeçalho
+→ cabeçalho vem do cliente*: a política do Postgres protegeria um recorte escolhido por quem
+chama. A checagem roda **sob a própria política** — a empresa é declarada antes, então a
+consulta a `employee_company` já sai recortada, sem filtro escrito à mão.
+
+Para o VITRA real a recomendação é *claim no JWT*, com o cabeçalho sobrevivendo só para quem
+opera em mais de uma empresa (o caso da ANA SILVA). A decisão está aberta no plano e está
+concentrada numa função só, para que a troca seja barata.
 
 ## Subir o ambiente
 

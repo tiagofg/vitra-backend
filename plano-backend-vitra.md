@@ -730,6 +730,13 @@ Três decisões tomadas durante a execução, que valem para o VITRA real:
 - **Falta de empresa é `400` na borda, não lista vazia.** Sob RLS o comportamento natural de
   esquecer a empresa é "voltou vazio", que é seguro e péssimo de depurar. Falhar
   explicitamente troca meia hora de investigação por uma mensagem de erro.
+- **Declarar a empresa não é autorizar o acesso a ela.** O RLS confia no GUC, o GUC vem do
+  cabeçalho e o cabeçalho vem do cliente: sem conferir o vínculo do usuário em
+  `employee_company`, a política protegeria um recorte escolhido por quem chama. São duas
+  defesas contra atacantes diferentes — o RLS cobre `WHERE` esquecido no serviço, a borda
+  cobre chamador malicioso — e a segunda **não** é opcional. Ordem: `401` sem token, `400`
+  sem empresa, `403` sem vínculo, antes de qualquer query de negócio. A checagem roda sob a
+  própria política, então nem ela escreve filtro de empresa.
 
 **Retrabalho da S0 — parcialmente feito.** Foi feito o que o bake-off precisava e o que era
 barato: `tenancy.py`, `TenantScopedMixin` com PK composta, `ListingSpec.campo_ativo`,
