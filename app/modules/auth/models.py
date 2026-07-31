@@ -31,9 +31,7 @@ grupo_permissao = Table(
     "grupo_permissao",
     Base.metadata,
     Column("grupo_id", Uuid, ForeignKey("grupo.id", ondelete="CASCADE"), primary_key=True),
-    Column(
-        "permissao_id", Uuid, ForeignKey("permissao.id", ondelete="CASCADE"), primary_key=True
-    ),
+    Column("permissao_id", Uuid, ForeignKey("permissao.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -58,9 +56,7 @@ class Grupo(ModeloBase, AtivoMixin):
     nome: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     descricao: Mapped[str | None] = mapped_column(String(200))
 
-    permissoes: Mapped[list[Permissao]] = relationship(
-        secondary=grupo_permissao, lazy="selectin"
-    )
+    permissoes: Mapped[list[Permissao]] = relationship(secondary=grupo_permissao, lazy="selectin")
 
 
 class Usuario(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
@@ -72,7 +68,7 @@ class Usuario(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # `Alterar Limites` do orçamento: acima disto o desconto exige autorização (F4).
+    # `Alterar Limites` do orçamento: acima disto o desconto exige autorização (S4).
     limite_desconto_pct: Mapped[Decimal] = mapped_column(
         Numeric(9, 4), default=Decimal("0.0000"), nullable=False
     )
@@ -101,8 +97,8 @@ class StatusAutorizacao(enum.StrEnum):
 class AutorizacaoDocumento(ModeloBase):
     """O botão `Permissões` do orçamento: autorização pontual, por documento.
 
-    Modelo criado em F0 junto com o RBAC porque a migração inicial já o comporta;
-    o serviço que o consome entra em F4 (desconto acima do limite do usuário).
+    Modelo criado em S0 junto com o RBAC porque a migração inicial já o comporta;
+    o serviço que o consome entra em S4 (desconto acima do limite do usuário).
     """
 
     __tablename__ = "autorizacao_documento"
