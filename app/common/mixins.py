@@ -17,8 +17,32 @@ class AtivoMixin:
     ativo: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
 
 
+class TenantScopedMixin:
+    """Tabela por empresa sob RLS: `tenant_id` faz parte da **chave primária**.
+
+    A PK composta `(tenant_id, id)` não é enfeite. É ela que deixa a FK entre duas tabelas
+    por empresa carregar o `tenant_id` junto — e é isso que torna *fisicamente impossível*
+    ligar o preço da empresa A ao produto da empresa B. Não é validação de serviço que
+    alguém pode esquecer: o `INSERT` falha.
+
+    A ordem das colunas na PK vem do `PrimaryKeyConstraint` explícito de cada modelo, não
+    da ordem de declaração — herança de mixin não dá garantia de ordem.
+    """
+
+    @declared_attr
+    @classmethod
+    def tenant_id(cls) -> Mapped[uuid.UUID]:
+        return mapped_column(
+            Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
+        )
+
+
 class EmpresaScopedMixin:
-    """Recorte multiempresa por linha, banco único."""
+    """Recorte multiempresa por linha, banco único.
+
+    Desenho da S0, anterior ao RLS: o filtro por empresa é responsabilidade do serviço.
+    Sobrevive nas tabelas da S0 que ainda não migraram; tabela nova usa `TenantScopedMixin`.
+    """
 
     @declared_attr
     @classmethod

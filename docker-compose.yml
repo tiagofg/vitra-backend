@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgres:16-alpine
+    # 17, igual ao alvo. Desenvolver noutra major que a de produção é dívida gratuita —
+    # e aqui o assunto é política de segurança, onde o comportamento por versão importa.
+    image: postgres:17-alpine
     container_name: vitra-db
     environment:
       POSTGRES_USER: vitra

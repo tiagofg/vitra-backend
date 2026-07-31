@@ -1,0 +1,13 @@
+-- Põe o usuário de login dentro do papel de grupo criado pela migração de RLS.
+--
+-- Roda **depois** de `alembic upgrade head`, e uma vez só por banco: é a migração que cria
+-- `vitra_app` e concede a ele SELECT/INSERT/UPDATE/DELETE nas tabelas. Aqui só se diz quem
+-- é o membro. A separação é de propósito — privilégio é schema e vive na migração;
+-- identidade que loga é implantação e muda de ambiente para ambiente.
+--
+--   make runtime
+--
+-- Em produção o equivalente é o mesmo GRANT, para o usuário criado com senha vinda do
+-- ambiente. O que **não** pode mudar é a propriedade: esse usuário nunca é dono das
+-- tabelas e nunca tem BYPASSRLS.
+GRANT vitra_app TO vitra_runtime;
