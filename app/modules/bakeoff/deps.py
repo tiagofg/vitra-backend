@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import Sessao, UsuarioAtual
 from app.core.tenancy import EmpresaNaoDeclarada, SemVinculoComEmpresa, declarar_empresa
 from app.modules.auth.models import Usuario
-from app.modules.bakeoff.models import Colaborador, ColaboradorEmpresa
+from app.modules.bakeoff.models import Colaborador, ColaboradorEmpresa, Empresa
 
 
 async def empresa_do_pedido(
@@ -93,16 +93,44 @@ async def _tem_vinculo(session: AsyncSession, usuario: Usuario) -> bool:
     Não há atalho para superusuário. Ele existe para atravessar o RBAC — *o que pode
     fazer* —, e aqui a pergunta é outra: *de qual empresa é o dado*. Deixá-lo passar
     reabriria a escolha livre de `tenant_id` para a conta mais poderosa do sistema.
+
+    **Três linhas precisam estar ativas**, e não só existir:
+
+    * `usuario.ativo` — já conferido por `usuario_atual`, que devolve 401 antes de chegar
+      aqui;
+    * `employees.active` — desativar é *o* mecanismo de offboarding do VITRA ("cadastros
+      nunca são apagados, são desativados"). Se desativar não corta o acesso, `active` vira
+      um campo que parece proteger e não protege — a pior categoria, porque ninguém
+      confere de novo;
+    * `tenants.active` — empresa desativada e ainda operável é o mesmo problema um nível
+      acima.
     """
     if not usuario.email:
         return False
 
     # `employee_company` está sob RLS e a empresa já foi declarada: esta consulta enxerga
     # apenas os vínculos da empresa pedida. Se voltar linha, o vínculo existe *nela*.
+    #
+    # `tenants` é global e não tem RLS, então o join com ela precisa da igualdade
+    # explícita — é a única parte desta query que nomeia o tenant, e mesmo assim para
+    # *ler o status da empresa*, não para recortar.
+    #
+    # Sobre o `lower()`: ele impede o uso do índice único de `employees.email` e força
+    # varredura. Fica assim de propósito — a correção seria um índice funcional em
+    # `lower(email)`, e `employees` faz parte do schema **fixo** do banco compartilhado,
+    # onde não se cria índice. `employees` é pequena (pessoas do grupo, não documentos), e
+    # a alternativa — comparar a coluna crua — dependeria de a caixa do e-mail semeado pelo
+    # Henrique casar com a do nosso cadastro. Ver a ressalva de latência em
+    # `notas-bakeoff.md`: no VITRA real, onde o schema é nosso, o índice entra.
     vinculo = await session.execute(
         select(ColaboradorEmpresa.role)
         .join(Colaborador, Colaborador.id == ColaboradorEmpresa.employee_id)
-        .where(func.lower(Colaborador.email) == usuario.email.lower())
+        .join(Empresa, Empresa.id == ColaboradorEmpresa.tenant_id)
+        .where(
+            func.lower(Colaborador.email) == usuario.email.lower(),
+            Colaborador.active.is_(True),
+            Empresa.active.is_(True),
+        )
         .limit(1)
     )
     return vinculo.scalar_one_or_none() is not None

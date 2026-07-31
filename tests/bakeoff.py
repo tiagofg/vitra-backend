@@ -45,6 +45,15 @@ _HASH_DESCARTAVEL = gerar_hash_senha("senha-de-teste-123")
 
 
 @dataclass(frozen=True)
+class UsuarioDeTeste:
+    """Quem loga, o token dele e o e-mail que liga `usuario` a `employees`."""
+
+    id: uuid.UUID
+    token: str
+    email: str
+
+
+@dataclass(frozen=True)
 class Cenario:
     """Duas empresas com catálogos disjuntos — o mínimo para o isolamento significar algo."""
 
@@ -139,7 +148,7 @@ async def criar_usuario_vinculado(
     *,
     empresas: tuple[uuid.UUID, ...],
     sufixo_login: str = "",
-) -> tuple[uuid.UUID, str]:
+) -> UsuarioDeTeste:
     """Cria quem loga (`usuario`), quem trabalha (`employees`) e o vínculo entre eles.
 
     São duas tabelas para a mesma pessoa: o schema fixo do bake-off tem
@@ -149,8 +158,12 @@ async def criar_usuario_vinculado(
     `empresas` é a lista de onde a pessoa tem vínculo. Passar uma só é o que permite testar
     o 403: autenticado, mas pedindo a empresa do vizinho.
 
-    Devolve `(usuario_id, token)`. O token é emitido direto em vez de passar pelo login —
-    a suíte não está testando autenticação aqui, e o argon2 do login custa caro por teste.
+    Devolve id, token **e e-mail**: o e-mail é a ponte que a autorização percorre, então
+    o teste que desativa o colaborador precisa dele para achar a linha. Derivá-lo de novo
+    no teste duplicaria o padrão de formatação — e duplicata de padrão apodrece.
+
+    O token é emitido direto em vez de passar pelo login: a suíte não está testando
+    autenticação aqui, e o argon2 custa caro por teste.
     """
     email = f"pessoa{sufixo_login}+{cenario.sufixo}@grupo.dev"
 
@@ -179,7 +192,7 @@ async def criar_usuario_vinculado(
             )
             await sessao.commit()
 
-    return usuario.id, criar_token(usuario.id)
+    return UsuarioDeTeste(id=usuario.id, token=criar_token(usuario.id), email=email)
 
 
 async def criar_usuario_sem_email(motor: AsyncEngine, cenario: Cenario) -> str:

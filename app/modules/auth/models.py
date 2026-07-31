@@ -64,7 +64,14 @@ class Usuario(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
 
     login: Mapped[str] = mapped_column(String(60), nullable=False, unique=True, index=True)
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
-    email: Mapped[str | None] = mapped_column(String(160))
+    # `unique=True` porque o e-mail deixou de ser só contato: é a ponte que liga quem loga
+    # (`usuario`) a quem trabalha (`employees`), e é por ela que a autorização por empresa
+    # decide. Duas linhas com o mesmo e-mail dariam o mesmo acesso à mesma empresa, e nada
+    # no banco impediria que existissem — quem pudesse criar usuário atravessaria o
+    # recorte escrevendo o e-mail certo.
+    # Continua nulável: o Postgres permite N nulos sob UNIQUE, e usuário sem e-mail
+    # simplesmente não alcança empresa nenhuma.
+    email: Mapped[str | None] = mapped_column(String(160), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

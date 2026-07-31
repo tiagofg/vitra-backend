@@ -17,10 +17,14 @@ São defesas contra atacantes diferentes, e uma não substitui a outra.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.modules.bakeoff.models import Colaborador, Empresa
 from tests.bakeoff import Cenario
 
 # As quatro rotas do módulo. Antes desta correção eram as únicas 4 operações sem
@@ -156,6 +160,51 @@ async def test_usuario_sem_email_nao_alcanca_nenhuma_empresa(
     )
 
     assert resposta.status_code == 403
+
+
+# --- desativação corta o acesso -----------------------------------------------
+
+
+async def test_colaborador_desativado_perde_o_acesso(
+    autenticado: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario, email_do_token: str
+) -> None:
+    """Desativar é *o* mecanismo de offboarding do VITRA — precisa cortar o acesso.
+
+    Positivo primeiro: com a pessoa ativa, a listagem responde. Sem essa metade, o 403
+    abaixo passaria mesmo se a rota estivesse quebrada por outro motivo.
+    """
+    cabecalho = {"X-Empresa-Id": str(cenario.abacaxi)}
+    assert (await autenticado.get("/api/v1/produtos", headers=cabecalho)).status_code == 200
+
+    await _desativar(motor_runtime, Colaborador, Colaborador.email == email_do_token)
+
+    resposta = await autenticado.get("/api/v1/produtos", headers=cabecalho)
+    assert resposta.status_code == 403, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
+
+
+async def test_empresa_desativada_deixa_de_ser_operavel(
+    autenticado: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    """Empresa desativada e ainda operável é o mesmo problema um nível acima.
+
+    E o recorte continua valendo: desativar a ABACAXI não pode derrubar a UVA.
+    """
+    abacaxi = {"X-Empresa-Id": str(cenario.abacaxi)}
+    uva = {"X-Empresa-Id": str(cenario.uva)}
+    assert (await autenticado.get("/api/v1/produtos", headers=abacaxi)).status_code == 200
+
+    await _desativar(motor_runtime, Empresa, Empresa.id == cenario.abacaxi)
+
+    assert (await autenticado.get("/api/v1/produtos", headers=abacaxi)).status_code == 403
+    assert (await autenticado.get("/api/v1/produtos", headers=uva)).status_code == 200
+
+
+async def _desativar(motor: AsyncEngine, modelo: type, condicao: Any) -> None:
+    """`tenants` e `employees` são globais — dá para atualizar sem declarar empresa."""
+    async with AsyncSession(motor) as sessao:
+        await sessao.execute(update(modelo).where(condicao).values(active=False))
+        await sessao.commit()
 
 
 async def test_quem_tem_vinculo_com_as_duas_alterna_pelo_cabecalho(
