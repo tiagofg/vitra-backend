@@ -38,7 +38,7 @@ from pydantic import BaseModel
 from app.common.base_service import BaseService
 from app.common.schemas import SaidaBase
 from app.core.deps import Sessao
-from app.core.errors import CONFLITO, NAO_ENCONTRADO, pode_falhar
+from app.core.errors import CONFLITO, NAO_ENCONTRADO, Falha, pode_falhar
 from app.core.listing import ListParams, LookupItem, Pagina
 
 ROTA_LISTAR = "listar"
@@ -64,6 +64,7 @@ def crud_router(
     saida: type[SaidaBase],
     por_empresa: bool = True,
     rotas: frozenset[str] = TODAS_AS_ROTAS,
+    falhas_extra: tuple[Falha, ...] = (),
 ) -> APIRouter:
     """Monta o CRUD comum de um recurso.
 
@@ -73,6 +74,13 @@ def crud_router(
     `por_empresa=True` (padrão): as rotas usam `SessaoEmpresa`/`EmpresaDoPedido`, e `criar()`
     recebe o `tenant_id` da transação — nunca do corpo do pedido. `por_empresa=False` é para
     recurso global (`apoio`, `cidade`, `banco`), que usa `Sessao` puro.
+
+    `falhas_extra` documenta, em `criar`/`atualizar`, falha que só o `service` do recurso
+    conhece (`RegraDeNegocio` com código específico — domínio errado de uma FK,
+    referência inválida) e que a fábrica não tem como adivinhar sozinha. Sem isto o
+    contrato publica só o `422 validacao` genérico do FastAPI, e o código real (ex.:
+    `dominio_invalido`) fica documentado em lugar nenhum — mesmo problema que
+    `test_toda_rota_com_id_no_caminho_declara_404` existe para pegar do lado do 404.
 
     Import de `app.modules.auth.deps` fica dentro da função, não no topo do arquivo: é a
     única peça que este módulo comum precisa de um módulo de domínio, e adiar o import evita
@@ -153,7 +161,7 @@ def crud_router(
         # e reprova quando as assinaturas não são estruturalmente iguais.
         if por_empresa:
 
-            @pode_falhar(CONFLITO)
+            @pode_falhar(CONFLITO, *falhas_extra)
             async def criar_item_por_empresa(
                 dados: criar,  # type: ignore[valid-type]
                 usuario: Annotated[Usuario, Depends(pode_criar)],
@@ -174,7 +182,7 @@ def crud_router(
             )
         else:
 
-            @pode_falhar(CONFLITO)
+            @pode_falhar(CONFLITO, *falhas_extra)
             async def criar_item_global(
                 dados: criar,  # type: ignore[valid-type]
                 usuario: Annotated[Usuario, Depends(pode_criar)],
@@ -219,7 +227,7 @@ def crud_router(
         # redefinição do símbolo quando as assinaturas não batem.
         if por_empresa:
 
-            @pode_falhar(NAO_ENCONTRADO, CONFLITO)
+            @pode_falhar(NAO_ENCONTRADO, CONFLITO, *falhas_extra)
             async def atualizar_item_por_empresa(
                 item_id: uuid.UUID,
                 dados: atualizar,  # type: ignore[valid-type]
@@ -244,7 +252,7 @@ def crud_router(
             )
         else:
 
-            @pode_falhar(NAO_ENCONTRADO, CONFLITO)
+            @pode_falhar(NAO_ENCONTRADO, CONFLITO, *falhas_extra)
             async def atualizar_item_global(
                 item_id: uuid.UUID,
                 dados: atualizar,  # type: ignore[valid-type]

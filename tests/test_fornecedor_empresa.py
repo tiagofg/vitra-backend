@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from httpx import AsyncClient
-from sqlalchemy import select
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.tenancy import declarar_empresa
+from app.modules.auth.models import Usuario
 from app.modules.empresa.models import Empresa
 from app.modules.pessoas.models import Fornecedor, FornecedorEmpresa
 from app.modules.pessoas.service import FornecedorEmpresaService
-from tests.cenario import Cenario
+from tests.cenario import Cenario, criar_usuario_vinculado
 
 
 def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, str]:
@@ -139,17 +141,34 @@ async def test_fornecedor_inexistente_da_404(
     assert resposta.status_code == 404
 
 
-async def test_abrir_vigencia_recusa_empresa_compradora_sem_vinculo(
+async def test_abrir_vigencia_recusa_empresa_compradora_inexistente(
+    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
+) -> None:
+    """`empresa_compradora_id` é FK simples para `tenants` — tabela **global**, sem RLS.
+    Sem checar existência, o usuário gravaria um UUID que nem é empresa."""
+    cabecalho = _cabecalho(cabecalho_admin, empresa)
+    fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
+
+    resposta = await cliente.post(
+        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        json={
+            "empresa_compradora_id": "00000000-0000-0000-0000-000000000000",
+            "vigencia_inicio": "2026-01-01",
+        },
+        headers=cabecalho,
+    )
+    assert resposta.status_code == 422, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "empresa_compradora_invalida"
+
+
+async def test_abrir_vigencia_recusa_empresa_compradora_desativada(
     cliente: AsyncClient,
     cabecalho_admin: dict[str, str],
     empresa: Empresa,
     sessao: AsyncSession,
 ) -> None:
-    """`empresa_compradora_id` é FK simples para `tenants` — tabela **global**, sem RLS.
-    Sem checar vínculo, o usuário registraria como compradora qualquer empresa da
-    instalação, com ou sem relação nenhuma com ela."""
-    rival = Empresa(codigo="RIVAL", razao_social="Rival Iluminação Ltda")
-    sessao.add(rival)
+    desativada = Empresa(codigo="DESATIVADA", razao_social="Ex-Empresa do Grupo", ativo=False)
+    sessao.add(desativada)
     await sessao.flush()
 
     cabecalho = _cabecalho(cabecalho_admin, empresa)
@@ -157,11 +176,58 @@ async def test_abrir_vigencia_recusa_empresa_compradora_sem_vinculo(
 
     resposta = await cliente.post(
         f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
-        json={"empresa_compradora_id": str(rival.id), "vigencia_inicio": "2026-01-01"},
+        json={"empresa_compradora_id": str(desativada.id), "vigencia_inicio": "2026-01-01"},
         headers=cabecalho,
     )
     assert resposta.status_code == 422, resposta.text
-    assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa_compradora"
+    assert resposta.json()["erro"]["codigo"] == "empresa_compradora_invalida"
+
+
+async def test_abrir_vigencia_aceita_empresa_compradora_diferente_da_ativa_sob_rls(
+    app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    """A prova que faltava na rodada 1: passa por `app_bakeoff`/`motor_runtime` — o papel
+    de runtime, com RLS de verdade — não pela conexão de dono que `cliente`/`sessao` usam
+    e que mascarou o bug que a rodada 2 encontrou (`tem_vinculo` contra uma empresa
+    diferente da ativa é sempre vazio sob RLS, porque a política já recorta a consulta
+    para `tenant_id = <empresa ativa>`). A correção troca a checagem por "é uma `Empresa`
+    ativa", que não sofre disso — este teste prova exatamente o caso que a checagem antiga
+    quebrava: `empresa_compradora_id` legitimamente diferente da empresa ativa do pedido.
+    """
+    usuario = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.abacaxi,),
+        sufixo_login="-empresa-compradora",
+        com_permissao_produtos=False,
+    )
+    # Superusuário sidesteps só o RBAC (`require`) — `tem_vinculo` continua exigido para a
+    # empresa ATIVA do pedido (declarar_empresa não é autorizar, nem para superusuário), e
+    # o usuário só tem vínculo com `cenario.abacaxi`. `empresa_compradora_id` vai ser
+    # `cenario.uva`, com a qual ele não tem vínculo nenhum — e é justamente essa referência
+    # que o teste prova que a rota aceita.
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await sessao.execute(
+            update(Usuario).where(Usuario.id == usuario.id).values(superusuario=True)
+        )
+        await sessao.commit()
+
+    transporte = ASGITransport(app=app_bakeoff)
+    headers = {"Authorization": f"Bearer {usuario.token}", "X-Empresa-Id": str(cenario.abacaxi)}
+    async with AsyncClient(transport=transporte, base_url="http://teste", headers=headers) as http:
+        fornecedor = await http.post(
+            "/api/v1/fornecedores",
+            json={"codigo": f"FOR-EC-{cenario.sufixo}", "razao_social": "Fornecedor Teste"},
+        )
+        assert fornecedor.status_code == 201, fornecedor.text
+
+        resposta = await http.post(
+            f"/api/v1/fornecedores/{fornecedor.json()['id']}/empresas-compradoras",
+            json={"empresa_compradora_id": str(cenario.uva), "vigencia_inicio": "2026-01-01"},
+        )
+
+    assert resposta.status_code == 201, resposta.text
+    assert resposta.json()["empresa_compradora_id"] == str(cenario.uva)
 
 
 async def test_fornecedor_empresa_de_outra_empresa_nao_aparece_no_recorte(

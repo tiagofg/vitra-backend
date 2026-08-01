@@ -8,14 +8,27 @@ comum:
   `catalog_lookups.id` — nada no banco impede apontar `profissao_id` para uma linha de
   `marca`. `_ConfereDominiosMixin` fecha essa lacuna como regra de negócio, uma vez só para
   os três serviços que precisam dela.
-* **Confere vínculo em toda referência a outra empresa ou pessoa.** `employee_id` (em
-  `Colaborador`) e `empresa_compradora_id` (em `FornecedorEmpresa`) são FK simples para
-  tabela **global** (`employees`/`tenants`) — sem `tenant_id`, então sem RLS a proteger. Sem
-  a checagem explícita de `tem_vinculo`, qualquer usuário autenticado descobre, por
-  tentativa, se um UUID de pessoa ou empresa alheia existe, e pode gravar um cadastro que
-  aponta pra ela — o mesmo furo que `empresa_do_pedido` fecha na borda para a *própria*
-  empresa do pedido, mas que nenhum RLS fecha sozinho para uma referência *a outra* tabela
-  global dentro do corpo do pedido.
+* **Confere toda referência a outra tabela global.** `employee_id` (em `Colaborador`) e
+  `empresa_compradora_id` (em `FornecedorEmpresa`) são FK simples para tabela **global**
+  (`employees`/`tenants`) — sem `tenant_id`, então sem RLS a proteger. Sem checagem
+  explícita, qualquer usuário autenticado grava um cadastro apontando para um UUID alheio
+  só porque ele existe — o mesmo furo que `empresa_do_pedido` fecha na borda para a
+  *própria* empresa do pedido, mas que nenhum RLS fecha sozinho para uma referência *a
+  outra* tabela global dentro do corpo do pedido. **As duas checagens não são a mesma
+  coisa, de propósito:**
+    - `ColaboradorService` usa `tem_vinculo(session, employee_id, self.tenant_id)` — aqui
+      `self.tenant_id` é a empresa **ativa** do pedido, a mesma que o GUC do RLS já
+      declarou; a consulta a `employee_company` (sob RLS) sai naturalmente recortada para
+      ela, e o filtro explícito continua correto mesmo sob uma conexão que ignora RLS.
+    - `FornecedorEmpresaService.abrir_vigencia` **não** usa `tem_vinculo` — confere só que
+      `empresa_compradora_id` é uma `Empresa` ativa. `tem_vinculo` consultaria
+      `employee_company` pedindo vínculo com uma empresa **diferente** da ativa; sob RLS de
+      produção (papel de runtime, sem `BYPASSRLS`), a política já recorta a consulta para
+      `tenant_id = <empresa ativa>`, então perguntar por qualquer outro `tenant_id` na
+      mesma consulta é pedir a interseção de dois valores diferentes — sempre vazia,
+      inclusive para vínculo legítimo. `empresa_compradora_id` pode, de propósito, ser uma
+      empresa diferente da ativa (ver docstring de `FornecedorEmpresa`), então a checagem
+      certa é existência na tabela global, não vínculo pessoal.
 * **`ObraService`** é recortado por `cliente_id`, no mesmo molde de `ApoioService` recortado
   por `dominio`.
 * **`FornecedorEmpresaService`** não é CRUD: só abre vigência (fecha a anterior) e lista o
@@ -45,6 +58,7 @@ from app.core.listing import (
 from app.modules.apoio.models import DominioApoio, TabelaApoio
 from app.modules.auth.models import Usuario
 from app.modules.auth.service import tem_vinculo
+from app.modules.empresa.models import Empresa
 from app.modules.pessoas.models import (
     Cliente,
     Colaborador,
@@ -291,16 +305,37 @@ class FornecedorEmpresaService:
         await self._exigir_fornecedor()
 
         # `empresa_compradora_id` é FK simples para `tenants` (global, sem RLS): sem esta
-        # checagem, qualquer usuário autenticado registra como compradora uma empresa com a
-        # qual não tem vínculo nenhum — corrompe o dado de negócio e serve de oráculo de
-        # existência de tenant. `tem_vinculo` filtra `tenant_id` explicitamente na consulta,
-        # não confia no RLS (ver docstring da função).
-        if self.usuario_id is not None and not await tem_vinculo(
-            self.session, self.usuario_id, dados.empresa_compradora_id
-        ):
+        # checagem, qualquer usuário autenticado registra como compradora um UUID que nem
+        # é empresa — corrompe o dado de negócio.
+        #
+        # **Não** é checagem de vínculo do usuário com a compradora — tentativa anterior
+        # (revisão do PR #7, rodada 1) usava `tem_vinculo`, que consulta `employee_company`,
+        # tabela **sob RLS**. Sob o papel de runtime de produção, a política já recorta toda
+        # consulta para `tenant_id = <empresa ativa>`; pedir vínculo com qualquer *outra*
+        # empresa nessa mesma consulta é pedir a interseção de dois valores de `tenant_id`
+        # diferentes — sempre vazia, não importa o dado real. O efeito não era "recusar
+        # empresa alheia": era recusar **toda** `empresa_compradora_id` diferente da ativa,
+        # inclusive para quem tem vínculo legítimo nas duas (o caso da ANA SILVA) — e a
+        # suíte não pegou porque os testes rodam pela conexão de **dono**, que ignora RLS
+        # (`conftest.py::motor`).
+        #
+        # A invariante certa é mais simples: `empresa_compradora_id` precisa ser uma
+        # `Empresa` ativa do grupo — não precisa ser a empresa do pedido, nem uma que o
+        # usuário tenha vínculo pessoal; é exatamente o que o docstring de
+        # `FornecedorEmpresa` já descreve ("podem, e normalmente vão, ser a mesma empresa —
+        # mas contam histórias diferentes"). `tenants` é global, então esta consulta enxerga
+        # o grupo inteiro em qualquer sessão, RLS ou não.
+        empresa_existe = (
+            await self.session.execute(
+                select(Empresa.id).where(
+                    Empresa.id == dados.empresa_compradora_id, Empresa.ativo.is_(True)
+                )
+            )
+        ).first()
+        if empresa_existe is None:
             raise RegraDeNegocio(
-                "Usuário não tem vínculo com a empresa compradora informada.",
-                codigo="sem_vinculo_com_empresa_compradora",
+                "Empresa compradora não existe ou está desativada.",
+                codigo="empresa_compradora_invalida",
                 campos={"empresa_compradora_id": str(dados.empresa_compradora_id)},
             )
 
@@ -402,9 +437,17 @@ class ColaboradorService(
 
     async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
         await super()._antes_de_criar(valores)
-        if self.tenant_id is not None and not await tem_vinculo(
-            self.session, valores["employee_id"], self.tenant_id
-        ):
+        # Falha fechado: sem `tenant_id` não há como conferir vínculo nenhum, e um guard de
+        # segurança que desaparece em silêncio quando falta contexto é pior que um que
+        # nunca existiu — o próximo chamador que esquecer de passar `tenant_id` recebe um
+        # erro alto na hora, não um bypass silencioso. Hoje toda rota real passa os dois
+        # (`crud_router.criar_item_por_empresa` sempre injeta `empresa_id`).
+        if self.tenant_id is None:
+            raise RegraDeNegocio(
+                "Não é possível conferir o vínculo do colaborador sem uma empresa ativa.",
+                codigo="empresa_nao_declarada_para_colaborador",
+            )
+        if not await tem_vinculo(self.session, valores["employee_id"], self.tenant_id):
             raise RegraDeNegocio(
                 "Colaborador não tem vínculo com esta empresa.",
                 codigo="colaborador_sem_vinculo",

@@ -51,6 +51,9 @@ router_clientes = crud_router(
     criar=ClienteCriar,
     atualizar=ClienteAtualizar,
     saida=ClienteSaida,
+    # `_ConfereDominiosMixin` levanta `dominio_invalido`/`referencia_invalida` — sem isto o
+    # contrato só publicaria o `422 validacao` genérico do FastAPI.
+    falhas_extra=(REGRA_DE_NEGOCIO,),
 )
 
 router_fornecedores = crud_router(
@@ -71,6 +74,9 @@ router_colaboradores = crud_router(
     criar=ColaboradorCriar,
     atualizar=ColaboradorAtualizar,
     saida=ColaboradorSaida,
+    # `dominio_invalido` (herdado do mixin) + `colaborador_sem_vinculo` +
+    # `empresa_nao_declarada_para_colaborador`, os três levantados por `ColaboradorService`.
+    falhas_extra=(REGRA_DE_NEGOCIO,),
 )
 
 router_profissionais_externos = crud_router(
@@ -81,6 +87,7 @@ router_profissionais_externos = crud_router(
     criar=ProfissionalExternoCriar,
     atualizar=ProfissionalExternoAtualizar,
     saida=ProfissionalExternoSaida,
+    falhas_extra=(REGRA_DE_NEGOCIO,),
 )
 
 router_transportadoras = crud_router(
