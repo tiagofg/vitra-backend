@@ -13,6 +13,29 @@ from app.common.schemas import (
 )
 from app.modules.pessoas.models import TipoPessoa
 
+
+def _conferir_documento_do_tipo_pessoa(
+    tipo_pessoa: TipoPessoa | None, cpf_cnpj: str | None
+) -> None:
+    """`CpfCnpj` (`app/common/schemas.py`) aceita 11 **ou** 14 caracteres incondicionalmente
+    — só quem sabe se é PF ou PJ pode dizer qual dos dois vale. Chamado do `model_validator`
+    de cada schema que tem os dois campos juntos.
+
+    Só valida quando os dois vêm juntos nesta requisição: num `PUT` parcial que manda só
+    `cpf_cnpj` sem repetir `tipo_pessoa`, não dá para saber o tipo atual sem consultar o
+    banco — validação cruzada de schema para quando o dado já existe fica para o serviço,
+    se algum dia importar o suficiente para valer o consulta extra.
+    """
+    if tipo_pessoa is None or cpf_cnpj is None:
+        return
+    esperado, rotulo = (11, "CPF") if tipo_pessoa == TipoPessoa.fisica else (14, "CNPJ")
+    if len(cpf_cnpj) != esperado:
+        raise ValueError(
+            f"tipo_pessoa '{tipo_pessoa.value}' espera {rotulo} ({esperado} caracteres), "
+            f"recebeu {len(cpf_cnpj)}."
+        )
+
+
 # --- Cliente ------------------------------------------------------------------
 
 
@@ -32,6 +55,11 @@ class ClienteCriar(EnderecoCampos, ContatosCampos):
     categoria_id: uuid.UUID | None = None
     observacao: str | None = Field(default=None, max_length=2000)
 
+    @model_validator(mode="after")
+    def _documento_bate_com_tipo_pessoa(self) -> ClienteCriar:
+        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        return self
+
 
 class ClienteAtualizar(EnderecoCampos, ContatosCampos):
     codigo: str | None = Field(default=None, min_length=1, max_length=20)
@@ -47,6 +75,11 @@ class ClienteAtualizar(EnderecoCampos, ContatosCampos):
     categoria_id: uuid.UUID | None = None
     observacao: str | None = Field(default=None, max_length=2000)
     ativo: bool | None = None
+
+    @model_validator(mode="after")
+    def _documento_bate_com_tipo_pessoa(self) -> ClienteAtualizar:
+        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        return self
 
 
 class ClienteSaida(SaidaBase, EnderecoCampos, ContatosCampos):
@@ -187,6 +220,11 @@ class ProfissionalExternoCriar(EnderecoCampos, ContatosCampos):
     profissao_id: uuid.UUID | None = None
     crea_cau: str | None = Field(default=None, max_length=30)
 
+    @model_validator(mode="after")
+    def _documento_bate_com_tipo_pessoa(self) -> ProfissionalExternoCriar:
+        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        return self
+
 
 class ProfissionalExternoAtualizar(EnderecoCampos, ContatosCampos):
     codigo: str | None = Field(default=None, min_length=1, max_length=20)
@@ -196,6 +234,11 @@ class ProfissionalExternoAtualizar(EnderecoCampos, ContatosCampos):
     profissao_id: uuid.UUID | None = None
     crea_cau: str | None = Field(default=None, max_length=30)
     ativo: bool | None = None
+
+    @model_validator(mode="after")
+    def _documento_bate_com_tipo_pessoa(self) -> ProfissionalExternoAtualizar:
+        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        return self
 
 
 class ProfissionalExternoSaida(SaidaBase, EnderecoCampos, ContatosCampos):

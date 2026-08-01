@@ -52,8 +52,10 @@ class Cliente(ModeloTenant, AtivoMixin, EnderecoMixin, ContatosMixin, Observacao
     codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     nome: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     tipo_pessoa: Mapped[TipoPessoa] = mapped_column(TIPO_PESSOA_ENUM, nullable=False)
-    # `varchar(14)` cobre os dois: CPF são 11 dígitos, CNPJ são 14 — a borda
-    # (`app/common/schemas.py::CpfCnpj`) já valida o tamanho certo por `tipo_pessoa`.
+    # `varchar(14)` cobre os dois: CPF são 11 dígitos, CNPJ são 14. `CpfCnpj`
+    # (`app/common/schemas.py`) só normaliza e aceita 11 **ou** 14; quem confere que o
+    # tamanho bate com `tipo_pessoa` é o `model_validator` do schema
+    # (`ClienteCriar._documento_bate_com_tipo_pessoa`).
     cpf_cnpj: Mapped[str | None] = mapped_column(String(14))
     rg_ie: Mapped[str | None] = mapped_column(String(20))
     dt_nascimento: Mapped[date | None] = mapped_column(Date)

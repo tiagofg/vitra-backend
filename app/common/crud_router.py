@@ -214,46 +214,94 @@ def crud_router(
         )
 
     if ROTA_ATUALIZAR in rotas:
-        session_dep = SessaoEmpresa if por_empresa else Sessao
+        # Mesma razão da bifurcação de `criar`: por_empresa acrescenta `empresa_id` (aridade
+        # diferente), e o mypy trata `def` do mesmo nome em ramos de `if`/`else` como
+        # redefinição do símbolo quando as assinaturas não batem.
+        if por_empresa:
 
-        @pode_falhar(NAO_ENCONTRADO, CONFLITO)
-        async def atualizar_item(
-            item_id: uuid.UUID,
-            dados: atualizar,  # type: ignore[valid-type]
-            usuario: Annotated[Usuario, Depends(pode_editar)],
-            session: session_dep,  # type: ignore[valid-type]
-        ) -> Any:
-            obj = await service(session, usuario.id).atualizar(item_id, dados)
-            return saida.model_validate(obj)
+            @pode_falhar(NAO_ENCONTRADO, CONFLITO)
+            async def atualizar_item_por_empresa(
+                item_id: uuid.UUID,
+                dados: atualizar,  # type: ignore[valid-type]
+                usuario: Annotated[Usuario, Depends(pode_editar)],
+                session: SessaoEmpresa,
+                empresa_id: EmpresaDoPedido,
+            ) -> Any:
+                # `tenant_id` aqui não muda o recorte — RLS e `obter()` já garantem que só a
+                # linha da empresa ativa é alcançada — mas mantém `self.tenant_id`
+                # preenchido para qualquer gancho (`_antes_de_atualizar`) que precise dele,
+                # como `ColaboradorService` já precisa.
+                obj = await service(session, usuario.id, empresa_id).atualizar(item_id, dados)
+                return saida.model_validate(obj)
 
-        router.add_api_route(
-            "/{item_id}",
-            atualizar_item,
-            methods=["PUT"],
-            response_model=saida,
-            name=f"atualizar_{recurso}",
-            operation_id=f"atualizar_{recurso}",
-        )
+            router.add_api_route(
+                "/{item_id}",
+                atualizar_item_por_empresa,
+                methods=["PUT"],
+                response_model=saida,
+                name=f"atualizar_{recurso}",
+                operation_id=f"atualizar_{recurso}",
+            )
+        else:
+
+            @pode_falhar(NAO_ENCONTRADO, CONFLITO)
+            async def atualizar_item_global(
+                item_id: uuid.UUID,
+                dados: atualizar,  # type: ignore[valid-type]
+                usuario: Annotated[Usuario, Depends(pode_editar)],
+                session: Sessao,
+            ) -> Any:
+                obj = await service(session, usuario.id).atualizar(item_id, dados)
+                return saida.model_validate(obj)
+
+            router.add_api_route(
+                "/{item_id}",
+                atualizar_item_global,
+                methods=["PUT"],
+                response_model=saida,
+                name=f"atualizar_{recurso}",
+                operation_id=f"atualizar_{recurso}",
+            )
 
     if ROTA_DESATIVAR in rotas:
-        session_dep = SessaoEmpresa if por_empresa else Sessao
+        if por_empresa:
 
-        @pode_falhar(NAO_ENCONTRADO)
-        async def desativar_item(
-            item_id: uuid.UUID,
-            usuario: Annotated[Usuario, Depends(pode_excluir)],
-            session: session_dep,  # type: ignore[valid-type]
-        ) -> Any:
-            obj = await service(session, usuario.id).desativar(item_id)
-            return saida.model_validate(obj)
+            @pode_falhar(NAO_ENCONTRADO)
+            async def desativar_item_por_empresa(
+                item_id: uuid.UUID,
+                usuario: Annotated[Usuario, Depends(pode_excluir)],
+                session: SessaoEmpresa,
+                empresa_id: EmpresaDoPedido,
+            ) -> Any:
+                obj = await service(session, usuario.id, empresa_id).desativar(item_id)
+                return saida.model_validate(obj)
 
-        router.add_api_route(
-            "/{item_id}",
-            desativar_item,
-            methods=["DELETE"],
-            response_model=saida,
-            name=f"desativar_{recurso}",
-            operation_id=f"desativar_{recurso}",
-        )
+            router.add_api_route(
+                "/{item_id}",
+                desativar_item_por_empresa,
+                methods=["DELETE"],
+                response_model=saida,
+                name=f"desativar_{recurso}",
+                operation_id=f"desativar_{recurso}",
+            )
+        else:
+
+            @pode_falhar(NAO_ENCONTRADO)
+            async def desativar_item_global(
+                item_id: uuid.UUID,
+                usuario: Annotated[Usuario, Depends(pode_excluir)],
+                session: Sessao,
+            ) -> Any:
+                obj = await service(session, usuario.id).desativar(item_id)
+                return saida.model_validate(obj)
+
+            router.add_api_route(
+                "/{item_id}",
+                desativar_item_global,
+                methods=["DELETE"],
+                response_model=saida,
+                name=f"desativar_{recurso}",
+                operation_id=f"desativar_{recurso}",
+            )
 
     return router

@@ -8,8 +8,15 @@ from app.core.security import gerar_hash_senha
 from app.core.tenancy import declarar_empresa
 from app.modules.auth.models import Usuario, VinculoEmpresa
 from app.modules.empresa.models import Empresa
-from app.modules.pessoas.models import Cliente, Fornecedor
-from tests.cenario import Cenario
+from app.modules.pessoas.models import (
+    Cliente,
+    Colaborador,
+    Fornecedor,
+    Obra,
+    ProfissionalExterno,
+    Transportadora,
+)
+from tests.cenario import Cenario, criar_usuario_vinculado
 
 
 def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, str]:
@@ -254,6 +261,44 @@ async def test_obra_de_outro_cliente_nao_aparece_no_recorte(
     assert cruzado.status_code == 404
 
 
+async def test_obra_de_outra_empresa_nao_aparece_no_recorte(
+    motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    """`obra` está sob RLS — não é só o `cliente_id` que a `ObraService` confere na
+    aplicação; o banco recorta por `tenant_id` mesmo antes disso."""
+    codigo_abacaxi = f"CLI-OBRA-A-{cenario.sufixo}"
+    codigo_uva = f"CLI-OBRA-U-{cenario.sufixo}"
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.abacaxi)
+        cliente_abacaxi = Cliente(
+            tenant_id=cenario.abacaxi,
+            codigo=codigo_abacaxi,
+            nome="Da Abacaxi",
+            tipo_pessoa="fisica",
+        )
+        sessao.add(cliente_abacaxi)
+        await sessao.flush()
+        sessao.add(Obra(tenant_id=cenario.abacaxi, cliente_id=cliente_abacaxi.id, nome="Obra A"))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        cliente_uva = Cliente(
+            tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva", tipo_pessoa="fisica"
+        )
+        sessao.add(cliente_uva)
+        await sessao.flush()
+        sessao.add(Obra(tenant_id=cenario.uva, cliente_id=cliente_uva.id, nome="Obra U"))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        obras = (await sessao.execute(select(Obra))).scalars().all()
+
+    assert [o.nome for o in obras] == ["Obra U"]
+
+
 # --- Fornecedor -------------------------------------------------------------------
 
 
@@ -343,6 +388,129 @@ async def test_colaborador_liga_identidade_global_a_dados_por_empresa(
     assert repetido.status_code == 409
 
 
+async def test_colaborador_recusa_pessoa_de_outra_empresa(
+    cliente: AsyncClient,
+    cabecalho_admin: dict[str, str],
+    empresa: Empresa,
+    sessao: AsyncSession,
+) -> None:
+    """`employee_id` é FK simples para `employees` — tabela **global**, sem RLS. Sem
+    checar vínculo explicitamente, o `POST` aceitaria (e o lookup vazaria o nome de)
+    qualquer pessoa da instalação, vinculada ou não com a empresa ativa."""
+    rival = Empresa(codigo="RIVAL", razao_social="Rival Iluminação Ltda")
+    sessao.add(rival)
+    await sessao.flush()
+
+    pessoa_da_rival = Usuario(
+        login="pessoa-rival",
+        nome="Pessoa Da Rival",
+        email="rival@outraempresa.teste",
+        senha_hash=gerar_hash_senha("senha-de-teste-123"),
+    )
+    sessao.add(pessoa_da_rival)
+    await sessao.flush()
+    sessao.add(VinculoEmpresa(tenant_id=rival.id, employee_id=pessoa_da_rival.id))
+    await sessao.flush()
+
+    cabecalho = _cabecalho(cabecalho_admin, empresa)
+    resposta = await cliente.post(
+        "/api/v1/colaboradores",
+        json={"employee_id": str(pessoa_da_rival.id)},
+        headers=cabecalho,
+    )
+    assert resposta.status_code == 422, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "colaborador_sem_vinculo"
+
+    # Nada foi criado — o lookup não vaza o nome dela por busca.
+    lookup = await cliente.get(
+        "/api/v1/colaboradores/lookup", params={"q": "rival"}, headers=cabecalho
+    )
+    assert lookup.json() == []
+
+
+async def test_colaborador_lookup_e_listagem_filtram_por_nome(
+    cliente: AsyncClient,
+    cabecalho_admin: dict[str, str],
+    empresa: Empresa,
+    sessao: AsyncSession,
+) -> None:
+    """O nome mora em `employees` (`Usuario.nome`), não em `Colaborador` — sem o `join`
+    explícito em `ColaboradorService`, `?q=`/`?busca=` eram aceitos e silenciosamente
+    ignorados (`spec.campos_busca` vazio)."""
+    outro = Usuario(
+        login="vendedora-sp",
+        nome="Vendedora São Paulo",
+        email="vendedora-sp@vertz.teste",
+        senha_hash=gerar_hash_senha("senha-de-teste-123"),
+    )
+    sessao.add(outro)
+    await sessao.flush()
+    sessao.add(VinculoEmpresa(tenant_id=empresa.id, employee_id=outro.id))
+    await sessao.flush()
+
+    cabecalho = _cabecalho(cabecalho_admin, empresa)
+    await cliente.post(
+        "/api/v1/colaboradores", json={"employee_id": str(outro.id)}, headers=cabecalho
+    )
+
+    # Positivo antes do negativo, e sem acento — "sao paulo" acha "São Paulo".
+    lookup_acha = await cliente.get(
+        "/api/v1/colaboradores/lookup", params={"q": "sao paulo"}, headers=cabecalho
+    )
+    assert len(lookup_acha.json()) == 1
+    assert lookup_acha.json()[0]["label"] == "Vendedora São Paulo"
+
+    lookup_vazio = await cliente.get(
+        "/api/v1/colaboradores/lookup", params={"q": "zzz-nao-existe"}, headers=cabecalho
+    )
+    assert lookup_vazio.json() == []
+
+    listagem_acha = await cliente.get(
+        "/api/v1/colaboradores", params={"busca": "vendedora"}, headers=cabecalho
+    )
+    assert listagem_acha.json()["total"] == 1
+
+    listagem_vazia = await cliente.get(
+        "/api/v1/colaboradores", params={"busca": "zzz-nao-existe"}, headers=cabecalho
+    )
+    assert listagem_vazia.json()["total"] == 0
+
+
+async def test_colaborador_de_outra_empresa_nao_aparece_no_recorte(
+    motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    pessoa_abacaxi = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.abacaxi,),
+        sufixo_login="-colab-aba",
+        com_permissao_produtos=False,
+    )
+    pessoa_uva = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.uva,),
+        sufixo_login="-colab-uva",
+        com_permissao_produtos=False,
+    )
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.abacaxi)
+        sessao.add(Colaborador(tenant_id=cenario.abacaxi, employee_id=pessoa_abacaxi.id))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        sessao.add(Colaborador(tenant_id=cenario.uva, employee_id=pessoa_uva.id))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        colaboradores = (await sessao.execute(select(Colaborador))).scalars().all()
+
+    assert [c.employee_id for c in colaboradores] == [pessoa_uva.id]
+
+
 async def test_colaborador_cargo_precisa_ser_do_dominio_certo(
     cliente: AsyncClient,
     cabecalho_admin: dict[str, str],
@@ -390,6 +558,31 @@ async def test_crud_de_transportadora(
     assert criado.json()["antt"] == "123456"
 
 
+async def test_transportadora_de_outra_empresa_nao_aparece_no_recorte(
+    motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    codigo_abacaxi = f"TRA-A-{cenario.sufixo}"
+    codigo_uva = f"TRA-U-{cenario.sufixo}"
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.abacaxi)
+        sessao.add(
+            Transportadora(tenant_id=cenario.abacaxi, codigo=codigo_abacaxi, nome="Da Abacaxi")
+        )
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        sessao.add(Transportadora(tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva"))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        transportadoras = (await sessao.execute(select(Transportadora))).scalars().all()
+
+    assert [t.codigo for t in transportadoras] == [codigo_uva]
+
+
 async def test_crud_de_profissional_externo(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
@@ -406,3 +599,37 @@ async def test_crud_de_profissional_externo(
     )
     assert criado.status_code == 201, criado.text
     assert criado.json()["crea_cau"] == "CAU12345"
+
+
+async def test_profissional_externo_de_outra_empresa_nao_aparece_no_recorte(
+    motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    codigo_abacaxi = f"PROF-A-{cenario.sufixo}"
+    codigo_uva = f"PROF-U-{cenario.sufixo}"
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.abacaxi)
+        sessao.add(
+            ProfissionalExterno(
+                tenant_id=cenario.abacaxi,
+                codigo=codigo_abacaxi,
+                nome="Da Abacaxi",
+                tipo_pessoa="fisica",
+            )
+        )
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        sessao.add(
+            ProfissionalExterno(
+                tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva", tipo_pessoa="fisica"
+            )
+        )
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        profissionais = (await sessao.execute(select(ProfissionalExterno))).scalars().all()
+
+    assert [p.codigo for p in profissionais] == [codigo_uva]

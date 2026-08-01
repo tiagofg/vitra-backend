@@ -6,7 +6,16 @@ comum:
 
 * **Confere o domínio das FKs para `catalog_lookups`.** A FK em si é só
   `catalog_lookups.id` — nada no banco impede apontar `profissao_id` para uma linha de
-  `marca`. `_conferir_dominio` fecha essa lacuna como regra de negócio.
+  `marca`. `_ConfereDominiosMixin` fecha essa lacuna como regra de negócio, uma vez só para
+  os três serviços que precisam dela.
+* **Confere vínculo em toda referência a outra empresa ou pessoa.** `employee_id` (em
+  `Colaborador`) e `empresa_compradora_id` (em `FornecedorEmpresa`) são FK simples para
+  tabela **global** (`employees`/`tenants`) — sem `tenant_id`, então sem RLS a proteger. Sem
+  a checagem explícita de `tem_vinculo`, qualquer usuário autenticado descobre, por
+  tentativa, se um UUID de pessoa ou empresa alheia existe, e pode gravar um cadastro que
+  aponta pra ela — o mesmo furo que `empresa_do_pedido` fecha na borda para a *própria*
+  empresa do pedido, mas que nenhum RLS fecha sozinho para uma referência *a outra* tabela
+  global dentro do corpo do pedido.
 * **`ObraService`** é recortado por `cliente_id`, no mesmo molde de `ApoioService` recortado
   por `dominio`.
 * **`FornecedorEmpresaService`** não é CRUD: só abre vigência (fecha a anterior) e lista o
@@ -19,13 +28,23 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.base_service import BaseService
 from app.core.errors import NaoEncontrado, RegraDeNegocio
-from app.core.listing import ListingSpec
+from app.core.listing import (
+    ListingSpec,
+    ListParams,
+    LookupItem,
+    Pagina,
+    aplicar_listagem,
+    contem_sem_acento,
+    paginar,
+)
 from app.modules.apoio.models import DominioApoio, TabelaApoio
+from app.modules.auth.models import Usuario
+from app.modules.auth.service import tem_vinculo
 from app.modules.pessoas.models import (
     Cliente,
     Colaborador,
@@ -76,6 +95,32 @@ async def _conferir_dominio(
         )
 
 
+class _ConfereDominiosMixin:
+    """Gancho comum a serviços com FK simples para `catalog_lookups`: a subclasse só
+    declara `dominios_por_campo`, o resto (checar em `criar` e em `atualizar`) é herdado.
+
+    Precisa vir **antes** de `BaseService` na lista de bases — é o que faz
+    `super()._antes_de_criar(...)` chamar a implementação de `BaseService` em vez de
+    recursão infinita. `self.session` também vem de `BaseService.__init__`, herdado
+    normalmente; o mypy não enxerga essa garantia através do mixin, daí os `type: ignore`.
+    """
+
+    dominios_por_campo: dict[str, DominioApoio] = {}
+
+    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
+        await super()._antes_de_criar(valores)  # type: ignore[misc]
+        await self._conferir_dominios(valores)
+
+    async def _antes_de_atualizar(self, obj: Any, valores: dict[str, Any]) -> None:
+        await super()._antes_de_atualizar(obj, valores)  # type: ignore[misc]
+        await self._conferir_dominios(valores)
+
+    async def _conferir_dominios(self, valores: dict[str, Any]) -> None:
+        for campo, dominio in self.dominios_por_campo.items():
+            if campo in valores:
+                await _conferir_dominio(self.session, valores[campo], dominio, campo)  # type: ignore[attr-defined]
+
+
 # --- Cliente ------------------------------------------------------------------
 
 _DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
@@ -87,7 +132,7 @@ _DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
 }
 
 
-class ClienteService(BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
+class ClienteService(_ConfereDominiosMixin, BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
     nome_recurso = "Cliente"
     spec = ListingSpec(
         model=Cliente,
@@ -97,19 +142,7 @@ class ClienteService(BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
         ordenacao_padrao="codigo",
         campo_unico="codigo",
     )
-
-    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
-        await super()._antes_de_criar(valores)
-        await self._conferir_dominios(valores)
-
-    async def _antes_de_atualizar(self, obj: Cliente, valores: dict[str, Any]) -> None:
-        await super()._antes_de_atualizar(obj, valores)
-        await self._conferir_dominios(valores)
-
-    async def _conferir_dominios(self, valores: dict[str, Any]) -> None:
-        for campo, dominio in _DOMINIOS_CLIENTE.items():
-            if campo in valores:
-                await _conferir_dominio(self.session, valores[campo], dominio, campo)
+    dominios_por_campo = _DOMINIOS_CLIENTE
 
     def _label_lookup(self, obj: Cliente) -> str:
         return obj.nome
@@ -239,7 +272,14 @@ class FornecedorEmpresaService:
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def empresa_compradora_em(self, data: date) -> uuid.UUID | None:
-        """A vigência que cobre `data` — ou `None` se nenhuma cobre."""
+        """A vigência que cobre `data` — ou `None` se nenhuma cobre.
+
+        Ainda sem chamador: é o que a S5 (compras) vai usar para resolver, num pedido, qual
+        é a empresa compradora vigente do fornecedor naquela data. Fica coberto por teste
+        próprio (`tests/test_fornecedor_empresa.py`) mesmo sem consumidor de produção ainda,
+        porque é a regra de negócio que a aba `Histórico Emp. Comp.` do legado documenta —
+        não é exploração especulativa, é o próximo passo já desenhado.
+        """
         stmt = select(FornecedorEmpresa.empresa_compradora_id).where(
             FornecedorEmpresa.fornecedor_id == self.fornecedor_id,
             FornecedorEmpresa.vigencia_inicio <= data,
@@ -249,6 +289,20 @@ class FornecedorEmpresaService:
 
     async def abrir_vigencia(self, dados: FornecedorEmpresaAbrir) -> FornecedorEmpresa:
         await self._exigir_fornecedor()
+
+        # `empresa_compradora_id` é FK simples para `tenants` (global, sem RLS): sem esta
+        # checagem, qualquer usuário autenticado registra como compradora uma empresa com a
+        # qual não tem vínculo nenhum — corrompe o dado de negócio e serve de oráculo de
+        # existência de tenant. `tem_vinculo` filtra `tenant_id` explicitamente na consulta,
+        # não confia no RLS (ver docstring da função).
+        if self.usuario_id is not None and not await tem_vinculo(
+            self.session, self.usuario_id, dados.empresa_compradora_id
+        ):
+            raise RegraDeNegocio(
+                "Usuário não tem vínculo com a empresa compradora informada.",
+                codigo="sem_vinculo_com_empresa_compradora",
+                campos={"empresa_compradora_id": str(dados.empresa_compradora_id)},
+            )
 
         aberta = (
             await self.session.execute(
@@ -268,6 +322,13 @@ class FornecedorEmpresaService:
                 )
             aberta.vigencia_fim = dados.vigencia_inicio - timedelta(days=1)
 
+        # Duas aberturas simultâneas passam pela checagem acima vendo a mesma `aberta` (ou
+        # nenhuma) e as duas tentam inserir uma linha sem `vigencia_fim` — quem chega
+        # depois esbarra em `uq_fornecedor_empresa_vigente` (índice único parcial) e recebe
+        # `409 conflito` genérico do handler de `IntegrityError`, não este
+        # `RegraDeNegocio`. Correto e seguro: é o índice que garante a invariante "no
+        # máximo uma vigência aberta", a checagem acima só dá a mensagem específica no
+        # caminho sem corrida.
         nova = FornecedorEmpresa(
             tenant_id=self.tenant_id,
             fornecedor_id=self.fornecedor_id,
@@ -284,9 +345,14 @@ class FornecedorEmpresaService:
 
 # --- Profissional externo --------------------------------------------------------
 
+_DOMINIOS_PROFISSIONAL_EXTERNO: dict[str, DominioApoio] = {
+    "profissao_id": DominioApoio.profissao,
+}
+
 
 class ProfissionalExternoService(
-    BaseService[ProfissionalExterno, ProfissionalExternoCriar, ProfissionalExternoAtualizar]
+    _ConfereDominiosMixin,
+    BaseService[ProfissionalExterno, ProfissionalExternoCriar, ProfissionalExternoAtualizar],
 ):
     nome_recurso = "Profissional externo"
     spec = ListingSpec(
@@ -297,20 +363,7 @@ class ProfissionalExternoService(
         ordenacao_padrao="codigo",
         campo_unico="codigo",
     )
-
-    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
-        await super()._antes_de_criar(valores)
-        if "profissao_id" in valores:
-            await _conferir_dominio(
-                self.session, valores["profissao_id"], DominioApoio.profissao, "profissao_id"
-            )
-
-    async def _antes_de_atualizar(self, obj: ProfissionalExterno, valores: dict[str, Any]) -> None:
-        await super()._antes_de_atualizar(obj, valores)
-        if "profissao_id" in valores:
-            await _conferir_dominio(
-                self.session, valores["profissao_id"], DominioApoio.profissao, "profissao_id"
-            )
+    dominios_por_campo = _DOMINIOS_PROFISSIONAL_EXTERNO
 
     def _label_lookup(self, obj: ProfissionalExterno) -> str:
         return obj.nome
@@ -326,7 +379,18 @@ _DOMINIOS_COLABORADOR: dict[str, DominioApoio] = {
 }
 
 
-class ColaboradorService(BaseService[Colaborador, ColaboradorCriar, ColaboradorAtualizar]):
+class ColaboradorService(
+    _ConfereDominiosMixin, BaseService[Colaborador, ColaboradorCriar, ColaboradorAtualizar]
+):
+    """`employee_id` aponta para `employees` (identidade global, sem RLS) — o serviço
+    precisa conferir *na mão* que a pessoa referenciada tem vínculo com a empresa ativa,
+    porque nenhuma política de banco faz isso por ele (ver docstring do módulo).
+
+    `nome` — o que `?busca=`/`?q=` esperam filtrar — mora em `Usuario`, não em
+    `Colaborador`; por isso `listar`/`lookup` são sobrescritos com o `join` explícito, em
+    vez de usar `spec.campos_busca` (que só resolve atributo do próprio modelo).
+    """
+
     nome_recurso = "Colaborador"
     spec = ListingSpec(
         model=Colaborador,
@@ -334,19 +398,38 @@ class ColaboradorService(BaseService[Colaborador, ColaboradorCriar, ColaboradorA
         ordenacao_padrao="criado_em",
         campo_unico="employee_id",
     )
+    dominios_por_campo = _DOMINIOS_COLABORADOR
 
     async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
         await super()._antes_de_criar(valores)
-        await self._conferir_dominios(valores)
+        if self.tenant_id is not None and not await tem_vinculo(
+            self.session, valores["employee_id"], self.tenant_id
+        ):
+            raise RegraDeNegocio(
+                "Colaborador não tem vínculo com esta empresa.",
+                codigo="colaborador_sem_vinculo",
+                campos={"employee_id": str(valores["employee_id"])},
+            )
 
-    async def _antes_de_atualizar(self, obj: Colaborador, valores: dict[str, Any]) -> None:
-        await super()._antes_de_atualizar(obj, valores)
-        await self._conferir_dominios(valores)
+    def _stmt_base(self) -> Select[Any]:
+        return select(Colaborador).join(Usuario, Colaborador.employee_id == Usuario.id)
 
-    async def _conferir_dominios(self, valores: dict[str, Any]) -> None:
-        for campo, dominio in _DOMINIOS_COLABORADOR.items():
-            if campo in valores:
-                await _conferir_dominio(self.session, valores[campo], dominio, campo)
+    async def listar(self, params: ListParams, serializar: Any) -> Pagina[Any]:
+        stmt = aplicar_listagem(self._stmt_base(), params, self.spec)
+        if params.busca:
+            stmt = stmt.where(contem_sem_acento(Usuario.nome, params.busca))
+        return await paginar(self.session, stmt, params, serializar)
+
+    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
+        stmt = self._stmt_base().where(Colaborador.ativo.is_(True))
+        if q:
+            stmt = stmt.where(contem_sem_acento(Usuario.nome, q))
+        stmt = stmt.order_by(asc(Usuario.nome)).limit(limite)
+        linhas = (await self.session.execute(stmt)).scalars().all()
+        return [
+            LookupItem(id=obj.id, codigo=None, label=self._label_lookup(obj), extras={})
+            for obj in linhas
+        ]
 
     def _label_lookup(self, obj: Colaborador) -> str:
         return obj.colaborador.nome
