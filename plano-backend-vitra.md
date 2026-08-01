@@ -858,15 +858,48 @@ Decisões tomadas durante a execução:
   "código já utilizado" mesmo em tenant diferente. Corrigido usando `cenario.sufixo` no
   código, como o resto do arquivo já fazia.
 
-**S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
-especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor. O
-esqueleto (`Produto`/`Variante`/`ProdutoEmpresa`, herdado do bake-off) já existe em
-`app/modules/produtos/` — falta enriquecer, não criar do zero.
+**S2 — Produtos.** ✅ *Entregue.* `Produto` enriquecido com as ~20 colunas de catálogo do
+plano (tipo, classificação, designer, fábrica, marca, unidades, fiscal guardado sem motor,
+`empresa_compradora_id`) e `especificacao JSONB` validada por `EspecificacaoLuminaria`.
+`Variante` trocou `finish`/`size` (texto livre do bake-off) por `acabamento_id`/`tamanho_id`
+— FK para `catalog_lookups`, porque os dois são `[combo +...]`, não campo livre. Três
+tabelas novas: `produto_fornecedor` (com snapshot de código/descrição e um padrão por
+produto via índice único parcial), `grupo_relacionado`/`item_relacionado` (kit quando
+`quantidade` preenchida, sugestão de venda cruzada quando nula). Lookup por código próprio
+**e** por código do fornecedor, via `EXISTS` correlacionado.
 
-**S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
-especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor. O
-esqueleto (`Produto`/`Variante`/`ProdutoEmpresa`, herdado do bake-off) já existe em
-`app/modules/produtos/` — falta enriquecer, não criar do zero.
+Duas peças transversais, ambas descritas em código, não repetidas aqui:
+
+- **`ConfereDominiosMixin`/`conferir_dominio` viraram compartilhados.** Moveram de
+  `pessoas/service.py` para `apoio/service.py` (dono de `DominioApoio`) — `produtos` os usa
+  para as nove FKs de catálogo, e para as `acabamento_id`/`tamanho_id` de cada item da
+  grade de variantes (que passam por `substituir_conjunto`, fora do fluxo
+  `criar()`/`_antes_de_criar` que o mixin cobre sozinho).
+- **RBAC por empresa**, a decisão que ficava aberta desde a S0.5
+  (`VinculoEmpresa.grupo_id` existia, `require()` nunca lia). Agora, quando o vínculo com a
+  empresa ativa do pedido tem um grupo específico, é ele — sozinho, sem união com os grupos
+  globais — quem decide a permissão; sem grupo no vínculo, cai no comportamento anterior.
+  `app/core/permissions.py::_permissao_por_empresa`.
+
+**Achado e corrigido durante a S2: bug pré-existente na migração da S1** (já mergeada).
+`use_alter=True` num `ForeignKeyConstraint` embutido em `op.create_table()` é descartado em
+silêncio pelo Alembic — o autogenerate da S2 acusou as sete FKs de `criado_por_id` das
+tabelas de pessoas como "faltando", e de fato nunca tinham sido criadas no banco, apesar de
+estarem no código da migração. Corrigido na própria migração `af281e86c3d5` (reescrever é
+mais barato que uma migração de correção sobre schema sem produção, mesmo raciocínio da
+S0.5) — as FKs entram agora por `create_foreign_key()` explícito, no mesmo molde que
+`fundacao` já usava e que a S2 segue desde o início para suas três tabelas novas.
+
+**Segundo achado, na revisão do PR desta fase:** a primeira versão da checagem de
+`empresa_compradora_id` (histórico de fornecedor, S1) usava `tem_vinculo` — que consulta
+`employee_company`, tabela sob RLS. Sob o papel de runtime de produção, pedir vínculo com
+uma empresa *diferente* da ativa nessa mesma consulta pede a interseção de dois valores de
+`tenant_id` — sempre vazia, mesmo para vínculo legítimo. A suíte não pegou porque os testes
+passavam pela conexão de dono, que ignora RLS. Corrigido trocando a checagem para "é uma
+`Empresa` ativa" (tabela global, imune a RLS) — a invariante que o domínio realmente pede,
+não vínculo pessoal. `tests/test_rbac_por_empresa.py` e o teste que reproduz esse caso em
+`tests/test_fornecedor_empresa.py` passam pela conexão de runtime de propósito, para não
+repetir o mesmo engano.
 
 **S3 — Estoque.** Depósito, localização, saldo, movimento append-only, reserva. Testes de
 concorrência no saldo (duas saídas simultâneas não podem furar).

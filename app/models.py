@@ -31,7 +31,14 @@ from app.modules.pessoas.models import (
     ProfissionalExterno,
     Transportadora,
 )
-from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
+from app.modules.produtos.models import (
+    GrupoRelacionado,
+    ItemRelacionado,
+    Produto,
+    ProdutoEmpresa,
+    ProdutoFornecedor,
+    Variante,
+)
 
 # Toda tabela por empresa sob RLS, num lugar só. A migração de RLS **não** importa daqui —
 # ela repete a lista em SQL cru, de propósito (migração é foto do schema num instante do
@@ -54,6 +61,9 @@ TABELAS_POR_EMPRESA: tuple[str, ...] = (
     Colaborador.__tablename__,
     ProfissionalExterno.__tablename__,
     Transportadora.__tablename__,
+    ProdutoFornecedor.__tablename__,
+    GrupoRelacionado.__tablename__,
+    ItemRelacionado.__tablename__,
 )
 
 __all__ = [
@@ -71,12 +81,15 @@ __all__ = [
     "Fornecedor",
     "FornecedorEmpresa",
     "Grupo",
+    "GrupoRelacionado",
+    "ItemRelacionado",
     "ModeloBase",
     "ModeloTenant",
     "Obra",
     "Permissao",
     "Produto",
     "ProdutoEmpresa",
+    "ProdutoFornecedor",
     "ProfissionalExterno",
     "RegistroAuditoria",
     "StatusAutorizacao",

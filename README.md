@@ -3,8 +3,8 @@
 Substituto do SoftLux 1.0.2.1521 para a Vertz. Python 3.12 + FastAPI + SQLAlchemy 2.0 async
 sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md).
 
-**Estado: S0 (Fundação), SB (Bake-off), S0.5 (Unificação) e S1 (Cadastros de pessoas)
-entregues.** As demais fases estão no plano.
+**Estado: S0 (Fundação), SB (Bake-off), S0.5 (Unificação), S1 (Cadastros de pessoas) e S2
+(Produtos) entregues.** As demais fases estão no plano.
 As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bakeoff.md).
 
 ## O que a S0 entrega
@@ -64,6 +64,49 @@ transação; um índice único parcial (`WHERE vigencia_fim IS NULL`) impede dua
 abertas ao mesmo tempo. FKs para `catalog_lookups` (`profissao_id`, `cargo_id`, …) são
 conferidas contra o domínio esperado em `_antes_de_criar`/`_antes_de_atualizar` — a FK do
 banco garante só que o `id` existe em `catalog_lookups`, não que é do domínio certo.
+
+**Empresa compradora × vínculo pessoal — duas checagens diferentes de propósito.**
+`ColaboradorService` confere `tem_vinculo` (RLS-safe, porque a empresa checada é sempre a
+ativa do pedido). `FornecedorEmpresaService.abrir_vigencia` **não** usa `tem_vinculo` para
+`empresa_compradora_id` — confere só que é uma `Empresa` ativa (tabela global, imune a RLS).
+A primeira tentativa usou `tem_vinculo` nos dois casos e quebrou o caso cross-empresa
+legítimo sob RLS de produção (`employee_company` está sob RLS; pedir vínculo com uma empresa
+*diferente* da ativa numa mesma consulta pede a interseção de dois `tenant_id`, sempre
+vazia) — ver o comentário em `app/modules/pessoas/service.py` para o raciocínio completo.
+
+## O que a S2 entrega
+
+| Bloco | Onde |
+|---|---|
+| Produto enriquecido — ~20 colunas de catálogo, especificação JSONB validada | `app/modules/produtos/models.py`, `schemas.py` |
+| `Variante` — `acabamento`/`tamanho` viram FK para `catalog_lookups`, não texto livre | `app/modules/produtos/models.py` |
+| `produto_fornecedor`, `grupo_relacionado`/`item_relacionado` | `app/modules/produtos/models.py` |
+| As três grades do `PUT /produtos/{id}` (variantes, fornecedores, grupos relacionados) | `app/modules/produtos/service.py::_resolver_relacoes` |
+| Lookup por código próprio **e** por código do fornecedor (`EXISTS` correlacionado) | `app/modules/produtos/service.py::ProdutoService.lookup` |
+| RBAC por empresa — grupo do vínculo, quando existe, decide sozinho | `app/core/permissions.py` |
+| `ConfereDominiosMixin`/`conferir_dominio` — movidos de `pessoas` para `apoio`, compartilhados | `app/modules/apoio/service.py` |
+| Migração das 3 tabelas novas + RLS + enriquecimento de `products`/`product_variants` | `alembic/versions/d2cf768cdc65_produtos_*.py` |
+
+**RBAC por empresa fecha a lacuna que a S0.5 deixava registrada** em
+`VinculoEmpresa.grupo_id`: até aqui a coluna existia e nunca era lida por `require()`, que
+resolvia permissão só via `usuario_grupo` (global). Agora, quando o vínculo com a empresa
+ativa do pedido aponta um grupo específico, é *esse* grupo que decide — sozinho, sem união
+com os grupos globais (é o que impede "admin na ABACAXI" valer também na UVA). Sem grupo no
+vínculo (o padrão até aqui), cai no comportamento anterior, sem regressão. Ver
+`app/core/permissions.py::_permissao_por_empresa` e `tests/test_rbac_por_empresa.py` — os
+três testes ali passam pela conexão de **runtime** (`app_bakeoff`/`motor_runtime`), não pela
+de dono, porque é o único jeito de provar isso sob RLS de verdade.
+
+**Achado corrigido durante a S2 — bug pré-existente na migração da S1.** Sete FKs de
+`criado_por_id` (`cliente`, `obra`, `fornecedor`, `fornecedor_empresa`, `colaborador`,
+`profissional_externo`, `transportadora`) nunca chegaram a existir no banco: `use_alter=True`
+num `ForeignKeyConstraint` passado embutido a `op.create_table()` é descartado em silêncio
+pelo Alembic — o sinalizador só tem efeito dentro do ordenador de dependências de
+`MetaData.create_all()`, que `op.create_table()` (uma instrução DDL direta) não replica. A
+migração `af281e86c3d5` (S1, já mergeada) foi corrigida no lugar — reescrever é mais barato
+que uma migração de correção sobre um schema que ainda não tem produção. As FKs das três
+tabelas novas da S2 entram do jeito certo desde o início: `create_foreign_key()` explícito,
+depois de todas as tabelas criadas.
 
 ## Multiempresa: quem recorta é o banco
 
@@ -252,5 +295,6 @@ partir das migrações.
 
 ## Fora de escopo (decisão registrada no plano)
 
-Sem motor fiscal e sem NFe — `ncm`/`cest`/`origem` serão apenas gravados no produto (S2).
-Financeiro, CRM, metas, ganhos sobre vendas e relatórios ficam para depois desta entrega.
+Sem motor fiscal e sem NFe — `ncm`/`cest`/`origem` são gravados no produto (S2), sem regra
+`NCM × Operação × CFOP × UF` nem emissão. Financeiro, CRM, metas, ganhos sobre vendas e
+relatórios ficam para depois desta entrega.

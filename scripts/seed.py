@@ -3,8 +3,9 @@
     python scripts/seed.py
 
 Cria/atualiza: permissões (a partir do catálogo), UFs, cidades e bancos de exemplo,
-as duas empresas do grupo, os grupos de acesso, o usuário administrador e (S1) cliente,
-fornecedor e transportadora de exemplo sob a VERTZ. Rodar duas vezes não duplica nada.
+as duas empresas do grupo, os grupos de acesso, o usuário administrador, cliente/fornecedor/
+transportadora de exemplo (S1) e produtos com variante e preço (S2), tudo sob a VERTZ.
+Rodar duas vezes não duplica nada.
 """
 
 from __future__ import annotations
@@ -12,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.engine import make_url
@@ -29,6 +32,7 @@ from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, U
 from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa, Filial  # noqa: E402
 from app.modules.pessoas.models import Cliente, Fornecedor, Transportadora  # noqa: E402
+from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante  # noqa: E402
 
 ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
@@ -148,6 +152,10 @@ APOIO: dict[DominioApoio, list[tuple[str, str]]] = {
         ("designer_de_interiores", "Designer de interiores"),
         ("engenheiro", "Engenheiro(a)"),
     ],
+    DominioApoio.marca: [
+        ("lumini", "Lumini"),
+        ("bella_luce", "Bella Luce"),
+    ],
 }
 
 # Cadastros de exemplo da S1 — clientes, fornecedor e transportadora sob a empresa VERTZ.
@@ -162,6 +170,27 @@ FORNECEDORES: list[tuple[str, str]] = [
 
 TRANSPORTADORAS: list[tuple[str, str]] = [
     ("TRA001", "Rápido Entrega Transportes Ltda"),
+]
+
+# Produtos de exemplo com variante (acabamento × tamanho) e preço/estoque — S2.
+PRODUTOS: list[dict[str, Any]] = [
+    {
+        "codigo": "PEND001",
+        "descricao": "Pendente Aurora",
+        "marca": "lumini",
+        "variantes": [
+            {"acabamento": "preto", "tamanho": "m", "preco_cents": 45900, "estoque": "12.000"},
+            {"acabamento": "dourado", "tamanho": "m", "preco_cents": 52900, "estoque": "5.000"},
+        ],
+    },
+    {
+        "codigo": "PLAF001",
+        "descricao": "Plafon Vega",
+        "marca": "bella_luce",
+        "variantes": [
+            {"acabamento": "branco", "tamanho": "unico", "preco_cents": 18900, "estoque": "30.000"},
+        ],
+    },
 ]
 
 
@@ -348,6 +377,61 @@ async def semear_pessoas(session: AsyncSession, empresa: Empresa) -> int:
     return criados
 
 
+async def semear_produtos(session: AsyncSession, empresa: Empresa) -> int:
+    """Produtos de exemplo com variante e preço, sob a empresa dada — mesmo padrão de
+    idempotência de `semear_pessoas`. Depende de `semear_apoio` já ter rodado nesta mesma
+    transação: é de lá que vêm `marca`/`acabamento`/`tamanho`.
+    """
+    await declarar_empresa(session, empresa.id)
+
+    apoio_por_chave = {
+        (a.dominio, a.codigo): a
+        for a in (await session.execute(select(TabelaApoio))).scalars().all()
+    }
+
+    criados = 0
+    for definicao in PRODUTOS:
+        existe = (
+            await session.execute(select(Produto.id).where(Produto.codigo == definicao["codigo"]))
+        ).first()
+        if existe is not None:
+            continue
+
+        marca = apoio_por_chave.get((DominioApoio.marca, definicao["marca"]))
+        produto = Produto(
+            tenant_id=empresa.id,
+            codigo=definicao["codigo"],
+            descricao=definicao["descricao"],
+            marca_id=marca.id if marca else None,
+        )
+        session.add(produto)
+        await session.flush()
+        criados += 1
+
+        for var in definicao["variantes"]:
+            acabamento = apoio_por_chave[(DominioApoio.acabamento, var["acabamento"])]
+            tamanho = apoio_por_chave[(DominioApoio.tamanho, var["tamanho"])]
+            variante = Variante(
+                tenant_id=empresa.id,
+                produto_id=produto.id,
+                acabamento_id=acabamento.id,
+                tamanho_id=tamanho.id,
+            )
+            session.add(variante)
+            await session.flush()
+            session.add(
+                ProdutoEmpresa(
+                    tenant_id=empresa.id,
+                    variante_id=variante.id,
+                    preco_cents=var["preco_cents"],
+                    estoque=Decimal(var["estoque"]),
+                )
+            )
+
+    await session.flush()
+    return criados
+
+
 HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
 
 
@@ -382,6 +466,7 @@ async def main() -> None:
         empresas = await semear_empresas(session)
         _, admin_criado = await semear_acesso(session, permissoes, empresas["VERTZ"])
         pessoas_criadas = await semear_pessoas(session, empresas["VERTZ"])
+        produtos_criados = await semear_produtos(session, empresas["VERTZ"])
         await session.commit()
 
     print(f"permissões no catálogo : {len(permissoes)}")
@@ -389,6 +474,7 @@ async def main() -> None:
     print(f"valores de apoio novos : {apoio_criados}")
     print(f"empresas               : {', '.join(sorted(empresas))}")
     print(f"pessoas novas (VERTZ)  : {pessoas_criadas}")
+    print(f"produtos novos (VERTZ) : {produtos_criados}")
     if admin_criado:
         print(f"\nusuário criado: {ADMIN_LOGIN} / {ADMIN_SENHA}  (troque a senha)")
     else:

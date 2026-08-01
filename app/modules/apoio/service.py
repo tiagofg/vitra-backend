@@ -9,7 +9,7 @@ from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.base_service import BaseService
-from app.core.errors import NaoEncontrado
+from app.core.errors import NaoEncontrado, RegraDeNegocio
 from app.core.listing import ListingSpec, LookupItem, contem_sem_acento
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf
 from app.modules.apoio.schemas import (
@@ -26,6 +26,59 @@ def slugificar(texto: str, tamanho: int = 30) -> str:
     sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
     limpo = re.sub(r"[^a-zA-Z0-9]+", "_", sem_acento).strip("_").lower()
     return (limpo or "item")[:tamanho]
+
+
+async def conferir_dominio(
+    session: AsyncSession, valor: uuid.UUID | None, dominio: DominioApoio, campo: str
+) -> None:
+    """`campo` aponta para `catalog_lookups.id` — a FK simples não garante *qual* domínio
+    (nada impede `profissao_id` apontar para uma linha de `marca`). Confere aqui porque é
+    regra de negócio, não algo que o banco possa checar sozinho. Usada por qualquer serviço
+    de outro módulo com FK para `catalog_lookups` — `pessoas` e `produtos`, por ora.
+    """
+    if valor is None:
+        return
+    dominio_real = (
+        await session.execute(select(TabelaApoio.dominio).where(TabelaApoio.id == valor))
+    ).scalar_one_or_none()
+    if dominio_real is None:
+        raise RegraDeNegocio(
+            f"'{campo}' não corresponde a um valor de apoio existente.",
+            codigo="referencia_invalida",
+            campos={campo: str(valor)},
+        )
+    if dominio_real != dominio:
+        raise RegraDeNegocio(
+            f"'{campo}' precisa ser um valor de apoio do domínio '{dominio.value}'.",
+            codigo="dominio_invalido",
+            campos={campo: str(valor)},
+        )
+
+
+class ConfereDominiosMixin:
+    """Gancho comum a serviços com FK simples para `catalog_lookups`: a subclasse só
+    declara `dominios_por_campo`, o resto (checar em `criar` e em `atualizar`) é herdado.
+
+    Precisa vir **antes** de `BaseService` na lista de bases — é o que faz
+    `super()._antes_de_criar(...)` chamar a implementação de `BaseService` em vez de
+    recursão infinita. `self.session` também vem de `BaseService.__init__`, herdado
+    normalmente; o mypy não enxerga essa garantia através do mixin, daí os `type: ignore`.
+    """
+
+    dominios_por_campo: dict[str, DominioApoio] = {}
+
+    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
+        await super()._antes_de_criar(valores)  # type: ignore[misc]
+        await self._conferir_dominios(valores)
+
+    async def _antes_de_atualizar(self, obj: Any, valores: dict[str, Any]) -> None:
+        await super()._antes_de_atualizar(obj, valores)  # type: ignore[misc]
+        await self._conferir_dominios(valores)
+
+    async def _conferir_dominios(self, valores: dict[str, Any]) -> None:
+        for campo, dominio in self.dominios_por_campo.items():
+            if campo in valores:
+                await conferir_dominio(self.session, valores[campo], dominio, campo)  # type: ignore[attr-defined]
 
 
 class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):

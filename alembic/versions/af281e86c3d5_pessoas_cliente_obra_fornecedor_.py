@@ -6,6 +6,17 @@ para `vitra_app`. A lista de tabelas é repetida aqui, não importada de `app.mo
 migração é foto do schema num instante do tempo; ver o comentário equivalente na migração
 de RLS original.
 
+**Corrigido nesta revisão** (achado ao gerar a migração da S2, autogenerate acusou as sete
+FKs de `criado_por_id` como "faltando"): `use_alter=True` num `ForeignKeyConstraint`
+passado embutido a `op.create_table()` é **descartado em silêncio** pelo Alembic — esse
+sinalizador só tem efeito dentro do ordenador de dependências de
+`MetaData.create_all()`, que `op.create_table()` (uma única instrução DDL direta) não
+replica. É a mesma pegadinha que a migração `fundacao` já documentava para as 16 tabelas
+dela — só que lá as FKs entravam à parte, via `create_foreign_key()` explícito, então
+nunca caíram nessa armadilha. Aqui a S1 pôs as sete FKs cedo demais (embutidas no
+`create_table()`), e elas nunca chegaram a existir no banco: a coluna `criado_por_id`
+existia, a constraint não. Corrigido para o mesmo padrão de `fundacao`.
+
 Revision ID: af281e86c3d5
 Revises: b1c2d3e4f5a6
 Create Date: 2026-08-01 14:57:54.924043
@@ -33,6 +44,11 @@ TABELAS_POR_EMPRESA = (
     "profissional_externo",
     "transportadora",
 )
+
+# As sete têm `criado_por_id` — mesmo papel de `TABELAS_COM_AUTOR` na migração `fundacao`:
+# a FK para `employees` entra à parte, depois de todas as tabelas criadas, porque
+# `op.create_table()` descarta `use_alter=True` embutido (ver docstring do módulo).
+TABELAS_COM_AUTOR = TABELAS_POR_EMPRESA
 
 PAPEL_RUNTIME = "vitra_app"
 PREDICADO = "tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid"
@@ -101,13 +117,6 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_cliente_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["endereco_cidade_id"],
             ["cidade.id"],
             name=op.f("fk_cliente_endereco_cidade_id"),
@@ -171,13 +180,6 @@ def upgrade() -> None:
             ["catalog_lookups.id"],
             name=op.f("fk_colaborador_cargo_id"),
             ondelete="RESTRICT",
-        ),
-        sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_colaborador_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
         ),
         sa.ForeignKeyConstraint(
             ["employee_id"],
@@ -249,13 +251,6 @@ def upgrade() -> None:
         sa.Column("email_secundario", sa.String(length=160), nullable=True),
         sa.Column("site", sa.String(length=160), nullable=True),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_profissional_externo_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["endereco_cidade_id"],
             ["cidade.id"],
             name=op.f("fk_profissional_externo_endereco_cidade_id"),
@@ -316,13 +311,6 @@ def upgrade() -> None:
         sa.Column("email_secundario", sa.String(length=160), nullable=True),
         sa.Column("site", sa.String(length=160), nullable=True),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_transportadora_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["endereco_cidade_id"],
             ["cidade.id"],
             name=op.f("fk_transportadora_endereco_cidade_id"),
@@ -374,13 +362,6 @@ def upgrade() -> None:
         sa.Column("email_secundario", sa.String(length=160), nullable=True),
         sa.Column("site", sa.String(length=160), nullable=True),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_fornecedor_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["endereco_cidade_id"],
             ["cidade.id"],
             name=op.f("fk_fornecedor_endereco_cidade_id"),
@@ -427,13 +408,6 @@ def upgrade() -> None:
         sa.Column("endereco_ponto_referencia", sa.String(length=160), nullable=True),
         sa.Column("endereco_cidade_id", sa.Uuid(), nullable=True),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_obra_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["endereco_cidade_id"],
             ["cidade.id"],
             name=op.f("fk_obra_endereco_cidade_id"),
@@ -471,13 +445,6 @@ def upgrade() -> None:
         sa.Column("criado_por_id", sa.Uuid(), nullable=True),
         sa.Column("tenant_id", sa.Uuid(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["criado_por_id"],
-            ["employees.id"],
-            name=op.f("fk_fornecedor_empresa_criado_por_id"),
-            ondelete="SET NULL",
-            use_alter=True,
-        ),
-        sa.ForeignKeyConstraint(
             ["empresa_compradora_id"],
             ["tenants.id"],
             name="fk_fornecedor_empresa_compradora",
@@ -506,11 +473,24 @@ def upgrade() -> None:
     )
     # ### end Alembic commands ###
 
+    for tabela in TABELAS_COM_AUTOR:
+        op.create_foreign_key(
+            f"fk_{tabela}_criado_por_id",
+            tabela,
+            "employees",
+            ["criado_por_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+
     for tabela in TABELAS_POR_EMPRESA:
         _ligar_rls(tabela)
 
 
 def downgrade() -> None:
+    for tabela in TABELAS_COM_AUTOR:
+        op.drop_constraint(f"fk_{tabela}_criado_por_id", tabela, type_="foreignkey")
+
     for tabela in TABELAS_POR_EMPRESA:
         op.execute(f"ALTER TABLE {tabela} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {tabela} DISABLE ROW LEVEL SECURITY")

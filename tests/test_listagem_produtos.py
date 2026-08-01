@@ -18,8 +18,9 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.tenancy import declarar_empresa
+from app.modules.apoio.models import DominioApoio
 from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
-from tests.cenario import Cenario
+from tests.cenario import Cenario, apoio_id
 
 
 @pytest.fixture
@@ -57,18 +58,22 @@ async def catalogo_de_borda(motor_runtime: AsyncEngine, cenario: Cenario) -> dic
         sessao.add_all([zerado, inativo, sem_preco])
         await sessao.flush()
 
+        grafite_id = await apoio_id(sessao, DominioApoio.acabamento, "grafite", "Grafite")
+        cru_id = await apoio_id(sessao, DominioApoio.acabamento, "cru", "Cru")
+        unico_id = await apoio_id(sessao, DominioApoio.tamanho, "u", "Único")
+
         variante_zerada = Variante(
             tenant_id=cenario.abacaxi,
             produto_id=zerado.id,
-            acabamento="grafite",
-            tamanho="U",
+            acabamento_id=grafite_id,
+            tamanho_id=unico_id,
             ativo=True,
         )
         variante_muda = Variante(
             tenant_id=cenario.abacaxi,
             produto_id=sem_preco.id,
-            acabamento="cru",
-            tamanho="U",
+            acabamento_id=cru_id,
+            tamanho_id=unico_id,
             ativo=True,
         )
         sessao.add_all([variante_zerada, variante_muda])

@@ -66,6 +66,30 @@ async def tem_vinculo(session: AsyncSession, employee_id: uuid.UUID, tenant_id: 
     return linha.scalar_one_or_none() is not None
 
 
+async def grupo_do_vinculo(
+    session: AsyncSession, employee_id: uuid.UUID, tenant_id: uuid.UUID
+) -> uuid.UUID | None:
+    """O `grupo_id` do vínculo da pessoa com aquela empresa — `None` quando não há vínculo,
+    ou há vínculo mas sem grupo específico (`employee_company.grupo_id` nulo). Os dois
+    casos têm o mesmo efeito para quem chama (`require()`): sem grupo por-empresa, a
+    permissão cai nos grupos globais do usuário.
+
+    Mesma cautela de `tem_vinculo`: filtro de `tenant_id` explícito na consulta, não
+    confiado só ao RLS — ver o docstring dela para o porquê.
+    """
+    linha = await session.execute(
+        select(VinculoEmpresa.grupo_id)
+        .join(Empresa, Empresa.id == VinculoEmpresa.tenant_id)
+        .where(
+            VinculoEmpresa.employee_id == employee_id,
+            VinculoEmpresa.tenant_id == tenant_id,
+            Empresa.ativo.is_(True),
+        )
+        .limit(1)
+    )
+    return linha.scalar_one_or_none()
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
