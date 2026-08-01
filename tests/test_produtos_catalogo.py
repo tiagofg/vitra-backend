@@ -228,7 +228,9 @@ async def test_grade_de_fornecedores_um_padrao_por_produto(
     assert valido.status_code == 200, valido.text
     assert len(valido.json()["fornecedores"]) == 2
 
-    # Dois fornecedores padrão ao mesmo tempo: o índice único parcial recusa.
+    # Dois fornecedores padrão ao mesmo tempo: o índice único parcial recusa. Ambos sem
+    # `id` — é a duplicação do par (produto, fornecedor) que dá 409 aqui, não o `padrao`
+    # (ver `test_grade_de_fornecedores_troca_qual_e_padrao` para esse caso).
     invalido = await cliente.put(
         f"/api/v1/produtos/{produto_id}",
         json={
@@ -240,6 +242,68 @@ async def test_grade_de_fornecedores_um_padrao_por_produto(
         headers=cabecalho,
     )
     assert invalido.status_code == 409, invalido.text
+
+
+async def test_grade_de_fornecedores_troca_qual_e_padrao(
+    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
+) -> None:
+    """O caminho documentado de trocar o padrão: os dois itens já existentes, só
+    movendo a bandeira. Achado de revisão: `substituir_conjunto` fazia um só `flush()`
+    em lote, e a ordem das duas instruções `UPDATE` ficava a critério do `Session`, não
+    da ordem da entrada — o índice único parcial (`padrao`) via as duas linhas com a
+    bandeira ligada ao mesmo tempo e recusava com 409, mesmo com a entrada em ordem
+    correta."""
+    cabecalho = _cabecalho(cabecalho_admin, empresa)
+    fornecedor_a = (
+        await cliente.post(
+            "/api/v1/fornecedores",
+            json={"codigo": "FOR001", "razao_social": "Fornecedor A"},
+            headers=cabecalho,
+        )
+    ).json()["id"]
+    fornecedor_b = (
+        await cliente.post(
+            "/api/v1/fornecedores",
+            json={"codigo": "FOR002", "razao_social": "Fornecedor B"},
+            headers=cabecalho,
+        )
+    ).json()["id"]
+    produto_id = (
+        await cliente.post(
+            "/api/v1/produtos", json={"codigo": "PROD001", "descricao": "Teste"}, headers=cabecalho
+        )
+    ).json()["id"]
+
+    primeira = await cliente.put(
+        f"/api/v1/produtos/{produto_id}",
+        json={
+            "fornecedores": [
+                {"fornecedor_id": fornecedor_a, "padrao": True},
+                {"fornecedor_id": fornecedor_b, "padrao": False},
+            ]
+        },
+        headers=cabecalho,
+    )
+    assert primeira.status_code == 200, primeira.text
+    por_fornecedor = {f["fornecedor_id"]: f["id"] for f in primeira.json()["fornecedores"]}
+
+    troca = await cliente.put(
+        f"/api/v1/produtos/{produto_id}",
+        json={
+            "fornecedores": [
+                {
+                    "id": por_fornecedor[fornecedor_a],
+                    "fornecedor_id": fornecedor_a,
+                    "padrao": False,
+                },
+                {"id": por_fornecedor[fornecedor_b], "fornecedor_id": fornecedor_b, "padrao": True},
+            ]
+        },
+        headers=cabecalho,
+    )
+    assert troca.status_code == 200, troca.text
+    padrao_agora = {f["fornecedor_id"]: f["padrao"] for f in troca.json()["fornecedores"]}
+    assert padrao_agora == {fornecedor_a: False, fornecedor_b: True}
 
 
 async def test_grade_de_grupos_relacionados(

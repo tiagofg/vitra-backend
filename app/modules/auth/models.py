@@ -118,17 +118,17 @@ class VinculoEmpresa(Base, TenantScopedMixin):
 
     Uma pessoa, N papéis — um por empresa: ANA SILVA pode ser `admin` na ABACAXI e
     `operator-sales` na UVA porque são duas linhas aqui, não porque `Usuario` tem duas
-    permissões. `grupo_id` nulável por ora: o RBAC por empresa (permissão que muda conforme
-    a empresa ativa) é o que a S2 em diante passa a exercer de verdade; aqui a coluna já
-    existe para que a tabela não precise de outra migração quando isso acontecer.
+    permissões. `grupo_id` nulável: sem grupo específico no vínculo, cai nos grupos globais
+    (`usuario_grupo`) — o comportamento de antes da S2, preservado por omissão.
 
-    **Até lá, `grupo_id` não é lido por `require()` em runtime.** `Usuario.pode()` resolve
-    permissão só a partir de `usuario_grupo` — global, sem RLS, a mesma para o usuário em
-    qualquer empresa. Ou seja: hoje o recorte por empresa protege *dado de tabela por
-    empresa* (é o que o RLS garante), não *ação administrativa* — um `empresa:editar`
-    concedido a alguém vale para editar qualquer empresa da instalação, não só a ativa.
-    Isso é esperado e não é a lacuna que este comentário registra; a lacuna é não deixar
-    isso implícito.
+    **Desde a S2, `grupo_id` é lido por `require()` em runtime** (`_permissao_por_empresa`,
+    `app/core/permissions.py`) — mas só para recursos cuja tabela é por empresa
+    (`RECURSOS_POR_EMPRESA` no mesmo módulo). Quando presente, o grupo do vínculo decide
+    sozinho, **sem união** com os grupos globais: "admin na ABACAXI" não vaza para a UVA.
+    Recurso global (`usuario`, `grupo`, `empresa`, `apoio`, `cidade`, `banco`, `uf`…)
+    continua resolvido só por `Usuario.pode()`, porque essas tabelas não têm `tenant_id` —
+    um grupo de vínculo aplicado a elas seria escalada de privilégio (achado de revisão do
+    PR de produtos), não recorte por empresa.
     """
 
     __tablename__ = "employee_company"

@@ -47,6 +47,28 @@ CATALOGO: dict[str, tuple[Acao, ...]] = {
     "transportadora": CRUD,
 }
 
+# Recursos cuja tabela é por empresa (`ModeloTenant`, sob RLS) — só esses fazem sentido para
+# o grupo do vínculo decidir sozinho. O resto do `CATALOGO` é global (sem `tenant_id`):
+# `usuario`, `grupo`, `permissao`, `empresa`, `apoio`, `cidade`, `banco`, `uf` valem para a
+# instalação inteira, então "grupo da ABACAXI" não pode ser a palavra final sobre eles — do
+# contrário um grupo de vínculo com `usuario:criar` cria conta em qualquer empresa
+# (achado na revisão: escalada de privilégio) e a mesma rota global responde diferente só
+# porque o pedido levou `X-Empresa-Id`. Fora daqui, `require()` sempre cai em
+# `Usuario.pode()`, os grupos globais — igual ao comportamento anterior à S2.
+RECURSOS_POR_EMPRESA = frozenset(
+    {
+        "filial",
+        "centro_custo",
+        "produto",
+        "cliente",
+        "obra",
+        "fornecedor",
+        "colaborador",
+        "profissional_externo",
+        "transportadora",
+    }
+)
+
 
 def pares_do_catalogo() -> list[tuple[str, str]]:
     return [(recurso, acao.value) for recurso, acoes in CATALOGO.items() for acao in acoes]
@@ -134,7 +156,7 @@ def require(recurso: str, acao: Acao | str) -> Callable[..., Coroutine[Any, Any,
         empresa_id = x_empresa_id or claims.tenant_id
         permitido = (
             await _permissao_por_empresa(session, usuario, empresa_id, recurso, acao_str)
-            if empresa_id is not None
+            if empresa_id is not None and recurso in RECURSOS_POR_EMPRESA
             else None
         )
         if permitido is None:

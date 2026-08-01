@@ -45,10 +45,11 @@ class TabelaApoio(ModeloBase, AtivoMixin):
     era o desenho pré-RLS, mantido durante a coexistência dos dois módulos.
 
     Sem RLS, e é o desenho: mas isso quer dizer que `apoio:editar`/`apoio:excluir`
-    concedido a alguém numa empresa vale para o vocabulário inteiro do grupo — a mesma
-    lacuna que o docstring de `VinculoEmpresa.grupo_id` registra para ação administrativa
-    em geral (RBAC ainda não é por empresa). Aqui o efeito é mais visível: editar "Dourado"
-    na ABACAXI muda o combo que a tela da UVA também usa, porque é a mesma linha.
+    concedido a alguém vale para o vocabulário inteiro do grupo, mesmo depois do RBAC por
+    empresa da S2 (`VinculoEmpresa.grupo_id`, `app/core/permissions.py::RECURSOS_POR_EMPRESA`)
+    — `apoio` é global de propósito, não entra nesse conjunto, então o grupo do vínculo
+    nunca decide sobre ele sozinho. Editar "Dourado" na ABACAXI muda o combo que a tela da
+    UVA também usa, porque é a mesma linha; recorte por empresa não existe para dado global.
     """
 
     __tablename__ = "catalog_lookups"

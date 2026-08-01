@@ -117,6 +117,53 @@ async def test_vinculo_sem_grupo_especifico_cai_no_grupo_global(
     assert resposta.status_code == 200, resposta.text
 
 
+async def test_grupo_do_vinculo_nao_decide_sobre_recurso_global(
+    app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    """`usuario` não tem `tenant_id` — é da instalação inteira, não de uma empresa. Um
+    grupo de vínculo concedendo `usuario:criar` na ABACAXI não pode virar permissão para
+    criar conta na instalação inteira: seria escalada de privilégio, achado de revisão
+    (o próprio furo que este PR se propôs a fechar, reaberto na metade global do
+    catálogo). `RECURSOS_POR_EMPRESA` existe para `require()` nunca deixar o grupo do
+    vínculo decidir sobre `usuario` — só `Usuario.pode()` (grupos globais) pode.
+    """
+    usuario = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.abacaxi,),
+        sufixo_login="-rbac-global",
+        com_permissao_produtos=False,
+    )
+
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        criar_usuario_permissao = await _permissao(sessao, "usuario", "criar")
+        grupo = Grupo(nome=f"RBAC-GLOBAL-{cenario.sufixo}", permissoes=[criar_usuario_permissao])
+        sessao.add(grupo)
+        await sessao.flush()
+        grupo_id = grupo.id
+        await sessao.commit()
+
+    await _definir_grupo_do_vinculo(motor_runtime, cenario.abacaxi, usuario.id, grupo_id)
+
+    transporte = ASGITransport(app=app_bakeoff)
+    headers = {"Authorization": f"Bearer {usuario.token}", "X-Empresa-Id": str(cenario.abacaxi)}
+    async with AsyncClient(
+        transport=transporte, base_url="http://teste", headers=headers
+    ) as cliente:
+        resposta = await cliente.post(
+            "/api/v1/usuarios",
+            json={
+                "login": f"invasor-{cenario.sufixo}",
+                "nome": "Invasor",
+                "senha": "senha-bem-forte-123",
+                "email": f"invasor-{cenario.sufixo}@grupo.dev",
+            },
+        )
+
+    assert resposta.status_code == 403, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "sem_permissao"
+
+
 async def test_grupo_do_vinculo_desativado_cai_no_grupo_global(
     app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
 ) -> None:

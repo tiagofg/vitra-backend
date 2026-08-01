@@ -42,11 +42,32 @@ async def substituir_conjunto(
 
     `entrada` são schemas com `id` opcional: sem `id` = linha nova; com `id` = linha existente.
     O que ficou de fora da entrada é removido.
+
+    Um `flush()` por item, na ordem da `entrada` — não um só no fim. Índice único parcial
+    (ex.: "um fornecedor padrão por produto") é checado pelo Postgres por instrução, não por
+    transação: trocar qual linha carrega a bandeira exige que o `UPDATE` que a desliga seja
+    *serializado* antes do que a liga, e um `flush()` em lote deixa a ordem das instruções a
+    critério do `Session` (ordem de carga, não a ordem em que `entrada` chegou) — que pode
+    diferir da ordem que o diff pede. Achado na revisão do PR de produtos: o caminho
+    documentado de trocar o padrão (mandar os dois `id`, só movendo a bandeira) devolvia 409
+    mesmo com a entrada na ordem certa.
     """
     por_id: dict[uuid.UUID, M] = {obj.id: obj for obj in existentes}
-    vistos: set[uuid.UUID] = set()
-    criados = atualizados = 0
+    ids_na_entrada: set[uuid.UUID] = set()
+    for item in entrada:
+        item_id = item.model_dump(include={"id"}).get("id")
+        if item_id is not None:
+            ids_na_entrada.add(item_id)
 
+    removidos = 0
+    for obj_id, obj in por_id.items():
+        if obj_id not in ids_na_entrada:
+            await session.delete(obj)
+            removidos += 1
+    if removidos:
+        await session.flush()
+
+    criados = atualizados = 0
     for posicao, item in enumerate(entrada):
         valores = item.model_dump(exclude_unset=True)
         item_id = valores.pop("id", None)
@@ -60,25 +81,17 @@ async def substituir_conjunto(
                 novo.criado_por_id = usuario_id
             session.add(novo)
             criados += 1
-            continue
+        else:
+            existente = por_id.get(item_id)
+            if existente is None:
+                raise RegraDeNegocio(
+                    "Item enviado não pertence a este registro.",
+                    codigo="filho_invalido",
+                    campos={"id": str(item_id)},
+                )
+            for campo, valor in valores.items():
+                setattr(existente, campo, valor)
+            atualizados += 1
+        await session.flush()
 
-        existente = por_id.get(item_id)
-        if existente is None:
-            raise RegraDeNegocio(
-                "Item enviado não pertence a este registro.",
-                codigo="filho_invalido",
-                campos={"id": str(item_id)},
-            )
-        for campo, valor in valores.items():
-            setattr(existente, campo, valor)
-        vistos.add(item_id)
-        atualizados += 1
-
-    removidos = 0
-    for obj_id, obj in por_id.items():
-        if obj_id not in vistos:
-            await session.delete(obj)
-            removidos += 1
-
-    await session.flush()
     return ResultadoConjunto(criados=criados, atualizados=atualizados, removidos=removidos)
