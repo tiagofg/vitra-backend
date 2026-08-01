@@ -25,7 +25,7 @@ class RefreshEntrada(BaseModel):
 class TokenSaida(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 — tipo de token do OAuth2, não segredo
 
 
 class AlterarSenhaEntrada(BaseModel):
@@ -75,8 +75,7 @@ class UsuarioCriar(BaseModel):
     login: str = Field(min_length=1, max_length=60)
     nome: str = Field(min_length=1, max_length=120)
     senha: str = Field(min_length=8, max_length=200)
-    email: EmailStr | None = None
-    empresa_id: uuid.UUID | None = None
+    email: EmailStr
     superusuario: bool = False
     limite_desconto_pct: Decimal = Field(default=Decimal("0.0000"), ge=0, le=100)
     grupo_ids: list[uuid.UUID] = []
@@ -85,7 +84,6 @@ class UsuarioCriar(BaseModel):
 class UsuarioAtualizar(BaseModel):
     nome: str | None = Field(default=None, min_length=1, max_length=120)
     email: EmailStr | None = None
-    empresa_id: uuid.UUID | None = None
     superusuario: bool | None = None
     ativo: bool | None = None
     limite_desconto_pct: Decimal | None = Field(default=None, ge=0, le=100)
@@ -102,10 +100,9 @@ class UsuarioSaida(_Saida):
     id: uuid.UUID
     login: str
     nome: str
-    email: str | None = None
+    email: str
     ativo: bool
     superusuario: bool
-    empresa_id: uuid.UUID | None = None
     limite_desconto_pct: Decimal
     grupos: list[GrupoSaida] = []
 
@@ -114,9 +111,14 @@ class EuSaida(_Saida):
     id: uuid.UUID
     login: str
     nome: str
-    email: str | None = None
+    email: str
     superusuario: bool
-    empresa_id: uuid.UUID | None = None
     limite_desconto_pct: Decimal
     grupos: list[str]
     permissoes: list[str]
+
+
+class TrocarEmpresaEntrada(BaseModel):
+    """`X-Empresa-Id` do corpo, não do cabeçalho: o pedido troca o próprio token."""
+
+    empresa_id: uuid.UUID

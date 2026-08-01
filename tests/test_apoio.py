@@ -4,7 +4,6 @@ from httpx import AsyncClient
 
 from app.modules.apoio.models import DominioApoio
 from app.modules.apoio.service import slugificar
-from app.modules.empresa.models import Empresa
 
 
 async def test_criar_e_listar_valor_de_apoio(
@@ -121,25 +120,6 @@ async def test_lookup_devolve_formato_padronizado(
     assert len(itens) == 1
     assert set(itens[0]) == {"id", "codigo", "label", "extras"}
     assert itens[0]["label"] == "Lumini"
-
-
-async def test_lookup_por_empresa_inclui_valores_globais(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
-) -> None:
-    await cliente.post("/api/v1/apoio/marca", json={"descricao": "Global"}, headers=cabecalho_admin)
-    await cliente.post(
-        "/api/v1/apoio/marca",
-        json={"descricao": "Só da Vertz", "empresa_id": str(empresa.id)},
-        headers=cabecalho_admin,
-    )
-
-    resposta = await cliente.get(
-        "/api/v1/apoio/marca/lookup",
-        params={"empresa_id": str(empresa.id)},
-        headers=cabecalho_admin,
-    )
-    rotulos = {item["label"] for item in resposta.json()}
-    assert rotulos == {"Global", "Só da Vertz"}
 
 
 async def test_lookup_ignora_desativados(

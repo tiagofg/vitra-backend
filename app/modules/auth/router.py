@@ -27,6 +27,7 @@ from app.modules.auth.schemas import (
     PermissoesGrupoEntrada,
     RefreshEntrada,
     TokenSaida,
+    TrocarEmpresaEntrada,
     UsuarioAtualizar,
     UsuarioCriar,
     UsuarioSaida,
@@ -71,11 +72,23 @@ async def eu(usuario: UsuarioAtual) -> EuSaida:
         nome=usuario.nome,
         email=usuario.email,
         superusuario=usuario.superusuario,
-        empresa_id=usuario.empresa_id,
         limite_desconto_pct=usuario.limite_desconto_pct,
         grupos=[g.nome for g in usuario.grupos],
         permissoes=sorted(usuario.permissoes_efetivas()),
     )
+
+
+@router_auth.post("/trocar-empresa", response_model=TokenSaida)
+async def trocar_empresa(
+    dados: TrocarEmpresaEntrada, session: Sessao, usuario: UsuarioAtual
+) -> TokenSaida:
+    """Reemite o token com `empresa_id` como claim, depois de provar o vínculo.
+
+    O front descobre as empresas disponíveis por `GET /empresas` (global, sem RLS) antes
+    de chamar isto — não há vínculo nenhum a provar para *listar* empresas, só para
+    *operar* numa delas.
+    """
+    return await AuthService(session).trocar_empresa(usuario, dados.empresa_id)
 
 
 # --- grupos ------------------------------------------------------------------
@@ -154,6 +167,13 @@ async def definir_permissoes_do_grupo(
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("grupo", Acao.editar))],
 ) -> GrupoSaida:
+    """`grupo:editar` é, na prática, quase-admin: quem tem essa permissão pode conceder ao
+    próprio grupo (ou a qualquer outro) todo o catálogo — inclusive `usuario:*` — sem
+    passar pelas travas de escalada que protegem `superusuario` em `UsuarioService`. Não é
+    a mesma lacuna: aquelas travam *fabricar/promover um superusuário*, esta não trava
+    *acumular, via grupo, o mesmo poder efetivo*. É o próximo alvo natural de uma trava
+    equivalente, não corrigido agora.
+    """
     grupo = await GrupoService(session, usuario.id).definir_permissoes(
         grupo_id, dados.permissao_ids
     )
@@ -173,13 +193,13 @@ async def listar_usuarios(
 
 
 @router_usuarios.post("", response_model=UsuarioSaida, status_code=status.HTTP_201_CREATED)
-@pode_falhar(NAO_ENCONTRADO, CONFLITO)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO, REGRA_DE_NEGOCIO)
 async def criar_usuario(
     dados: UsuarioCriar,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.criar))],
 ) -> UsuarioSaida:
-    novo = await UsuarioService(session, usuario.id).criar(dados)
+    novo = await UsuarioService(session, usuario.id, ator=usuario).criar(dados)
     return UsuarioSaida.model_validate(novo)
 
 
@@ -194,26 +214,28 @@ async def obter_usuario(
 
 
 @router_usuarios.put("/{usuario_id}", response_model=UsuarioSaida)
-@pode_falhar(NAO_ENCONTRADO, CONFLITO)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO, REGRA_DE_NEGOCIO)
 async def atualizar_usuario(
     usuario_id: uuid.UUID,
     dados: UsuarioAtualizar,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
 ) -> UsuarioSaida:
-    alvo = await UsuarioService(session, usuario.id).atualizar(usuario_id, dados)
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).atualizar(usuario_id, dados)
     return UsuarioSaida.model_validate(alvo)
 
 
 @router_usuarios.post("/{usuario_id}/senha", status_code=status.HTTP_204_NO_CONTENT)
-@pode_falhar(NAO_ENCONTRADO)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
 async def redefinir_senha(
     usuario_id: uuid.UUID,
     dados: UsuarioSenhaEntrada,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
 ) -> None:
-    await UsuarioService(session, usuario.id).definir_senha(usuario_id, dados.senha_nova)
+    await UsuarioService(session, usuario.id, ator=usuario).definir_senha(
+        usuario_id, dados.senha_nova
+    )
 
 
 @router_usuarios.delete("/{usuario_id}", response_model=UsuarioSaida)
@@ -223,7 +245,21 @@ async def desativar_usuario(
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.excluir))],
 ) -> UsuarioSaida:
-    alvo = await UsuarioService(session, usuario.id).desativar(usuario_id)
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).desativar(usuario_id)
+    return UsuarioSaida.model_validate(alvo)
+
+
+@router_usuarios.post("/{usuario_id}/reativar", response_model=UsuarioSaida)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
+async def reativar_usuario(
+    usuario_id: uuid.UUID,
+    session: Sessao,
+    usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
+) -> UsuarioSaida:
+    """Sem isto, um usuário desativado por engano — ou pela falta da trava que este mesmo
+    commit corrige — só voltava com `UPDATE` direto no banco. `BaseService.reativar()` já
+    existia; faltava um caminho até ele."""
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).reativar(usuario_id)
     return UsuarioSaida.model_validate(alvo)
 
 

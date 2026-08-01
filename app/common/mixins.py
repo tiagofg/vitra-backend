@@ -12,9 +12,15 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 
 class AtivoMixin:
-    """Cadastros nunca são apagados — são desativados."""
+    """Cadastros nunca são apagados — são desativados.
 
-    ativo: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+    Coluna física `active`: nome de coluna em inglês é a convenção do projeto (README,
+    "Convenções que valem para todas as fases"); o atributo Python continua `ativo`, que é
+    a língua do domínio. Isso também reconcilia as tabelas herdadas do bake-off — que já
+    usavam `active` — com o resto do schema, sem exigir um `campo_ativo` por spec.
+    """
+
+    ativo: Mapped[bool] = mapped_column("active", default=True, nullable=False, index=True)
 
 
 class TenantScopedMixin:
@@ -36,32 +42,6 @@ class TenantScopedMixin:
         # `tenant_id` como coluna líder, que serve para tudo que um índice só nesta coluna
         # serviria. O segundo custaria escrita e espaço sem ganhar nenhuma consulta.
         return mapped_column(Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False)
-
-
-class EmpresaScopedMixin:
-    """Recorte multiempresa por linha, banco único.
-
-    Desenho da S0, anterior ao RLS: o filtro por empresa é responsabilidade do serviço.
-    Sobrevive nas tabelas da S0 que ainda não migraram; tabela nova usa `TenantScopedMixin`.
-    """
-
-    @declared_attr
-    @classmethod
-    def empresa_id(cls) -> Mapped[uuid.UUID]:
-        return mapped_column(
-            Uuid, ForeignKey("empresa.id", ondelete="RESTRICT"), nullable=False, index=True
-        )
-
-
-class EmpresaOpcionalMixin:
-    """Para registros que podem ser globais (empresa_id nulo) ou de uma empresa."""
-
-    @declared_attr
-    @classmethod
-    def empresa_id(cls) -> Mapped[uuid.UUID | None]:
-        return mapped_column(
-            Uuid, ForeignKey("empresa.id", ondelete="RESTRICT"), nullable=True, index=True
-        )
 
 
 class EnderecoMixin:

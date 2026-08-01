@@ -3,7 +3,10 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_JWT_SECRET_PADRAO = "troque-esta-chave-em-producao-0000000000000000"  # noqa: S105 — sentinela, não segredo
 
 
 class Config(BaseSettings):
@@ -41,8 +44,11 @@ class Config(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
-    jwt_secret: str = "troque-esta-chave-em-producao-0000000000000000"
-    jwt_algoritmo: str = "HS256"
+    jwt_secret: str = _JWT_SECRET_PADRAO
+    # Só HMAC simétrico: são os três que `pyjwt` verifica sem chave pública separada, e é
+    # o que `criar_token`/`ler_claims` esperam. String livre aceitaria um algoritmo que o
+    # resto do código não sabe usar direito — melhor estourar na config do que em runtime.
+    jwt_algoritmo: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_access_ttl_minutos: int = 60
     jwt_refresh_ttl_dias: int = 7
 
@@ -61,6 +67,22 @@ class Config(BaseSettings):
     def url_migracao(self) -> str:
         """URL do **dono** das tabelas. Só o Alembic usa."""
         return self.database_url_admin or self.database_url
+
+    @model_validator(mode="after")
+    def _recusar_segredo_fraco_em_producao(self) -> Config:
+        """Sobe com o segredo padrão em `producao` = qualquer um forja token para
+        qualquer `sub`. Falhar no boot troca uma variável de ambiente esquecida por um
+        crash imediato e legível, em vez de um furo silencioso descoberto meses depois."""
+        if self.ambiente != "producao":
+            return self
+        if self.jwt_secret == _JWT_SECRET_PADRAO:
+            raise ValueError(
+                "VITRA_JWT_SECRET não pode ser o valor padrão em produção. "
+                "Gere um com `openssl rand -hex 32`."
+            )
+        if len(self.jwt_secret) < 32:
+            raise ValueError("VITRA_JWT_SECRET precisa ter pelo menos 32 caracteres em produção.")
+        return self
 
 
 @lru_cache

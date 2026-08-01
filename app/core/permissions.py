@@ -35,11 +35,18 @@ CATALOGO: dict[str, tuple[Acao, ...]] = {
     "cidade": CRUD,
     "banco": CRUD,
     "uf": (Acao.ler,),
+    "produto": CRUD,
 }
 
 
 def pares_do_catalogo() -> list[tuple[str, str]]:
     return [(recurso, acao.value) for recurso, acoes in CATALOGO.items() for acao in acoes]
+
+
+# Calculado uma vez no import, não a cada `require()`: a checagem de pertencimento é feita
+# em tempo de importação (uma por rota, ~poucas dezenas no total), mas não custa nada
+# construir o conjunto uma vez em vez de reconstruir a lista inteira a cada chamada.
+_PARES_VALIDOS = frozenset(pares_do_catalogo())
 
 
 def require(recurso: str, acao: Acao | str) -> Callable[[Usuario], Coroutine[Any, Any, Usuario]]:
@@ -49,7 +56,7 @@ def require(recurso: str, acao: Acao | str) -> Callable[[Usuario], Coroutine[Any
     recurso+ação, concedido a grupos; usuário herda dos grupos.
     """
     acao_str = acao.value if isinstance(acao, Acao) else acao
-    if (recurso, acao_str) not in pares_do_catalogo():
+    if (recurso, acao_str) not in _PARES_VALIDOS:
         raise KeyError(f"Permissão '{recurso}:{acao_str}' não está no catálogo.")
 
     # A falha é montada aqui, e não uma vez no módulo, porque cada rota tem o seu par: o

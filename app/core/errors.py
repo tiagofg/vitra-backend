@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
@@ -222,13 +223,17 @@ def registrar_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(IntegrityError)
     async def _integridade(_: Request, exc: IntegrityError) -> JSONResponse:
+        # O detalhe cru do Postgres (`Key (login)=(admin) already exists`) vaza nome de
+        # constraint e valor conflitante — informação de schema que não é do cliente.
+        # Fica só no log; a resposta é genérica de propósito.
         detalhe = getattr(getattr(exc, "orig", None), "detail", None)
+        if detalhe:
+            logging.getLogger("vitra.integridade").warning("IntegrityError: %s", detalhe)
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=envelope(
                 "conflito",
                 "Operação viola uma restrição do banco (registro duplicado ou vínculo inválido).",
-                {"detalhe": detalhe} if detalhe else None,
             ),
         )
 

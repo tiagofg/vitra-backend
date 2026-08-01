@@ -18,8 +18,8 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.tenancy import declarar_empresa
-from app.modules.bakeoff.models import Produto, ProdutoEmpresa, Variante
-from tests.bakeoff import Cenario
+from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
+from tests.cenario import Cenario
 
 
 @pytest.fixture
@@ -36,40 +36,40 @@ async def catalogo_de_borda(motor_runtime: AsyncEngine, cenario: Cenario) -> dic
         # Preço zero e estoque zero — não é "sem preço", é preço zero.
         zerado = Produto(
             tenant_id=cenario.abacaxi,
-            code=itens["grafite"],
-            description="Trilho Órion — grafite acetinado",
-            active=True,
+            codigo=itens["grafite"],
+            descricao="Trilho Órion — grafite acetinado",
+            ativo=True,
         )
-        # `active = false` continua na base e só aparece quando pedido.
+        # `ativo = false` continua na base e só aparece quando pedido.
         inativo = Produto(
             tenant_id=cenario.abacaxi,
-            code=itens["inativo"],
-            description="Spot Íris — descontinuado",
-            active=False,
+            codigo=itens["inativo"],
+            descricao="Spot Íris — descontinuado",
+            ativo=False,
         )
         # Variante sem linha em `product_tenant`: preço ausente, que é diferente de zero.
         sem_preco = Produto(
             tenant_id=cenario.abacaxi,
-            code=itens["sem_preco"],
-            description="Luminária Ácis — a definir",
-            active=True,
+            codigo=itens["sem_preco"],
+            descricao="Luminária Ácis — a definir",
+            ativo=True,
         )
         sessao.add_all([zerado, inativo, sem_preco])
         await sessao.flush()
 
         variante_zerada = Variante(
             tenant_id=cenario.abacaxi,
-            product_id=zerado.id,
-            finish="grafite",
-            size="U",
-            active=True,
+            produto_id=zerado.id,
+            acabamento="grafite",
+            tamanho="U",
+            ativo=True,
         )
         variante_muda = Variante(
             tenant_id=cenario.abacaxi,
-            product_id=sem_preco.id,
-            finish="cru",
-            size="U",
-            active=True,
+            produto_id=sem_preco.id,
+            acabamento="cru",
+            tamanho="U",
+            ativo=True,
         )
         sessao.add_all([variante_zerada, variante_muda])
         await sessao.flush()
@@ -77,10 +77,10 @@ async def catalogo_de_borda(motor_runtime: AsyncEngine, cenario: Cenario) -> dic
         sessao.add(
             ProdutoEmpresa(
                 tenant_id=cenario.abacaxi,
-                variant_id=variante_zerada.id,
-                price_cents=0,
-                stock_qty=Decimal("0.000"),
-                min_stock=Decimal("0.000"),
+                variante_id=variante_zerada.id,
+                preco_cents=0,
+                estoque=Decimal("0.000"),
+                estoque_minimo=Decimal("0.000"),
             )
         )
         await sessao.commit()
@@ -161,7 +161,7 @@ async def test_ordenacao_e_paginacao_saem_do_servidor(
 ) -> None:
     crescente = await autenticado.get(
         "/api/v1/produtos",
-        params={"ordenar_por": "code", "ordem": "asc", "tamanho": 200},
+        params={"ordenar_por": "codigo", "ordem": "asc", "tamanho": 200},
         headers=_cabecalho(cenario.abacaxi),
     )
     codigos = [item["codigo"] for item in crescente.json()["itens"]]
@@ -169,12 +169,12 @@ async def test_ordenacao_e_paginacao_saem_do_servidor(
 
     primeira = await autenticado.get(
         "/api/v1/produtos",
-        params={"ordenar_por": "code", "pagina": 1, "tamanho": 2},
+        params={"ordenar_por": "codigo", "pagina": 1, "tamanho": 2},
         headers=_cabecalho(cenario.abacaxi),
     )
     segunda = await autenticado.get(
         "/api/v1/produtos",
-        params={"ordenar_por": "code", "pagina": 2, "tamanho": 2},
+        params={"ordenar_por": "codigo", "pagina": 2, "tamanho": 2},
         headers=_cabecalho(cenario.abacaxi),
     )
     corpo = primeira.json()
@@ -203,10 +203,10 @@ async def test_ordenar_por_campo_fora_da_whitelist_e_recusado(
 async def test_empresa_id_na_query_string_nao_muda_o_recorte(
     autenticado: AsyncClient, cenario: Cenario
 ) -> None:
-    """`empresa_id` saiu do contrato. Se sobrasse, reabriria por fora a porta do RLS.
-
-    O parâmetro ainda existe em `ListParams` por causa das tabelas da S0 que não migraram;
-    o que este teste garante é que ele **não tem efeito** sobre uma tabela sob RLS.
+    """`empresa_id` saiu do contrato (S0.5): `ListParams` não o declara mais em nenhuma
+    listagem. Um valor extra na query string é apenas ignorado pelo FastAPI — o que este
+    teste garante é que ele não tem *nenhum* efeito sobre o recorte, que continua vindo só
+    do `X-Empresa-Id`/claim declarado na transação.
     """
     resposta = await autenticado.get(
         "/api/v1/produtos",

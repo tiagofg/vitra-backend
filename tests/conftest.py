@@ -21,7 +21,7 @@ import pytest  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncEngine,
     AsyncSession,
@@ -36,12 +36,12 @@ from app.core.db import get_session  # noqa: E402
 from app.core.permissions import pares_do_catalogo  # noqa: E402
 from app.core.security import gerar_hash_senha  # noqa: E402
 from app.main import criar_app  # noqa: E402
-from app.modules.auth.models import Grupo, Permissao, Usuario  # noqa: E402
+from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa  # noqa: E402
-from tests.bakeoff import (  # noqa: E402
+from tests.cenario import (  # noqa: E402
     Cenario,
     UsuarioDeTeste,
-    criar_usuario_sem_email,
+    criar_usuario_sem_vinculo,
     criar_usuario_vinculado,
     montar_cenario,
 )
@@ -145,7 +145,7 @@ async def cliente(app_teste: FastAPI) -> AsyncIterator[AsyncClient]:
         yield c
 
 
-# --- bake-off ----------------------------------------------------------------
+# --- multiempresa (RLS) --------------------------------------------------------
 
 
 @pytest.fixture
@@ -160,11 +160,12 @@ async def cenario(motor_runtime: AsyncEngine) -> Cenario:
 
 @pytest.fixture
 async def app_bakeoff() -> AsyncIterator[FastAPI]:
-    """App com pool de conexão de verdade, sem a sessão compartilhada dos testes da S0.
+    """App com pool de conexão de verdade, sem a sessão compartilhada dos outros testes.
 
-    O `app_teste` injeta **uma** sessão em todos os pedidos, o que serve para isolar dado
-    de teste e destrói o que o bake-off precisa medir: dois pedidos concorrentes têm que
-    disputar conexões de um pool real, senão o teste de concorrência não testa nada.
+    `app_teste` injeta **uma** sessão em todos os pedidos, o que serve para isolar dado de
+    teste e destrói o que a concorrência multiempresa precisa medir: dois pedidos
+    concorrentes têm que disputar conexões de um pool real, senão o teste de concorrência
+    não testa nada.
 
     `pool_size=2` com `max_overflow=0`: pequeno o bastante para forçar reuso de conexão
     entre pedidos — que é exatamente onde um `SET` no lugar de `SET LOCAL` vazaria.
@@ -206,7 +207,6 @@ async def usuario_das_duas(motor_runtime: AsyncEngine, cenario: Cenario) -> Usua
 
 @pytest.fixture
 async def email_do_token(usuario_das_duas: UsuarioDeTeste) -> str:
-    """O e-mail que liga `usuario` a `employees` — a ponte que a autorização percorre."""
     return usuario_das_duas.email
 
 
@@ -230,7 +230,7 @@ def _cliente_com_token(app: FastAPI, token: str) -> AsyncClient:
 async def autenticado(
     app_bakeoff: FastAPI, usuario_das_duas: UsuarioDeTeste
 ) -> AsyncIterator[AsyncClient]:
-    """Cliente já com o Bearer no cabeçalho padrão — o caminho feliz das rotas do módulo."""
+    """Cliente já com o Bearer no cabeçalho padrão — o caminho feliz das rotas por empresa."""
     async with _cliente_com_token(app_bakeoff, usuario_das_duas.token) as c:
         yield c
 
@@ -245,11 +245,11 @@ async def so_abacaxi(
 
 
 @pytest.fixture
-async def sem_email(
+async def sem_vinculo(
     app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
 ) -> AsyncIterator[AsyncClient]:
-    """Cliente de um usuário sem e-mail — a ponte para `employees` não fecha."""
-    token = await criar_usuario_sem_email(motor_runtime, cenario)
+    """Cliente de um usuário autenticado sem vínculo em nenhuma empresa."""
+    token = await criar_usuario_sem_vinculo(motor_runtime, cenario)
     async with _cliente_com_token(app_bakeoff, token) as c:
         yield c
 
@@ -259,11 +259,24 @@ async def sem_email(
 
 @pytest.fixture
 async def permissoes(sessao: AsyncSession) -> list[Permissao]:
-    itens = [
-        Permissao(recurso=recurso, acao=acao, descricao=f"{acao} {recurso}")
-        for recurso, acao in pares_do_catalogo()
-    ]
-    sessao.add_all(itens)
+    """Todo o catálogo, um `Permissao` por par recurso+ação.
+
+    Get-or-create, não `INSERT` cego: `tests/cenario.py` concede `produto:ler`/`criar` a
+    usuários de teste gravando **fora** desta savepoint (motor de runtime, commit direto),
+    então esses dois pares já existem de forma permanente assim que o primeiro teste
+    baseado em `cenario` roda na sessão — um `INSERT` sem checar bateria na
+    `UniqueConstraint` a partir daí.
+    """
+    existentes = {
+        (p.recurso, p.acao): p for p in (await sessao.execute(select(Permissao))).scalars()
+    }
+    itens = []
+    for recurso, acao in pares_do_catalogo():
+        permissao = existentes.get((recurso, acao))
+        if permissao is None:
+            permissao = Permissao(recurso=recurso, acao=acao, descricao=f"{acao} {recurso}")
+            sessao.add(permissao)
+        itens.append(permissao)
     await sessao.flush()
     return itens
 
@@ -281,11 +294,16 @@ async def admin(sessao: AsyncSession, empresa: Empresa) -> Usuario:
     usuario = Usuario(
         login="admin",
         nome="Administrador",
+        email="admin@vertz.teste",
         senha_hash=gerar_hash_senha(SENHA_PADRAO),
         superusuario=True,
-        empresa_id=empresa.id,
     )
     sessao.add(usuario)
+    await sessao.flush()
+    # Vínculo com `empresa`: rotas por empresa (filial, centro de custo, produtos) exigem
+    # `X-Empresa-Id` + vínculo em `VinculoEmpresa`, mesmo para o superusuário — declarar a
+    # empresa não é autorizar o acesso a ela.
+    sessao.add(VinculoEmpresa(tenant_id=empresa.id, employee_id=usuario.id))
     await sessao.flush()
     return usuario
 
@@ -299,11 +317,13 @@ async def consultor(sessao: AsyncSession, empresa: Empresa, permissoes: list[Per
     usuario = Usuario(
         login="consultor",
         nome="Consultor de Vendas",
+        email="consultor@vertz.teste",
         senha_hash=gerar_hash_senha(SENHA_PADRAO),
-        empresa_id=empresa.id,
     )
     usuario.grupos = [grupo]
     sessao.add(usuario)
+    await sessao.flush()
+    sessao.add(VinculoEmpresa(tenant_id=empresa.id, employee_id=usuario.id))
     await sessao.flush()
     return usuario
 

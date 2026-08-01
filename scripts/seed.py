@@ -15,19 +15,23 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.config import config  # noqa: E402
 from app.core.db import SessionLocal, engine  # noqa: E402
 from app.core.permissions import pares_do_catalogo  # noqa: E402
 from app.core.security import gerar_hash_senha  # noqa: E402
+from app.core.tenancy import declarar_empresa  # noqa: E402
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf  # noqa: E402
-from app.modules.auth.models import Grupo, Permissao, Usuario  # noqa: E402
+from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa, Filial  # noqa: E402
 
 ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
+ADMIN_EMAIL = os.getenv("VITRA_ADMIN_EMAIL", "admin@vertz.local")
 
 UFS: list[tuple[str, str, str]] = [
     ("AC", "Acre", "12"),
@@ -184,13 +188,12 @@ async def semear_bancos(session: AsyncSession) -> None:
 
 async def semear_apoio(session: AsyncSession) -> int:
     atuais = {
-        (a.dominio, a.codigo, a.empresa_id)
-        for a in (await session.execute(select(TabelaApoio))).scalars().all()
+        (a.dominio, a.codigo) for a in (await session.execute(select(TabelaApoio))).scalars().all()
     }
     criados = 0
     for dominio, valores in APOIO.items():
         for ordem, (codigo, descricao) in enumerate(valores):
-            if (dominio, codigo, None) in atuais:
+            if (dominio, codigo) in atuais:
                 continue
             session.add(
                 TabelaApoio(dominio=dominio, codigo=codigo, descricao=descricao, ordem=ordem)
@@ -200,7 +203,7 @@ async def semear_apoio(session: AsyncSession) -> int:
     return criados
 
 
-async def semear_empresas(session: AsyncSession, ufs: dict[str, Uf]) -> dict[str, Empresa]:
+async def semear_empresas(session: AsyncSession) -> dict[str, Empresa]:
     atuais = {e.codigo: e for e in (await session.execute(select(Empresa))).scalars().all()}
     definicoes = [
         ("VERTZ", "Vertz Iluminação e Decoração Ltda", "Vertz"),
@@ -213,21 +216,24 @@ async def semear_empresas(session: AsyncSession, ufs: dict[str, Uf]) -> dict[str
             atuais[codigo] = empresa
     await session.flush()
 
-    filiais = {
-        (f.empresa_id, f.codigo) for f in (await session.execute(select(Filial))).scalars().all()
-    }
+    # `filial` está sob RLS: a leitura e a escrita só enxergam a empresa declarada na
+    # transação, então o laço declara cada uma antes de checar/criar a matriz dela — e
+    # dá `flush()` a cada volta, senão o SQLAlchemy tenta agrupar os dois INSERTs num só
+    # `executemany`, que sairia inteiro sob o `SET LOCAL` da última empresa declarada.
     for codigo in ("VERTZ", "VIAHF"):
         empresa = atuais[codigo]
-        if (empresa.id, "001") not in filiais:
+        await declarar_empresa(session, empresa.id)
+        existe = (await session.execute(select(Filial.id).where(Filial.codigo == "001"))).first()
+        if existe is None:
             session.add(
                 Filial(
-                    empresa_id=empresa.id,
+                    tenant_id=empresa.id,
                     codigo="001",
                     nome=f"{empresa.nome_fantasia} — Matriz",
                     matriz=True,
                 )
             )
-    await session.flush()
+        await session.flush()
     return atuais
 
 
@@ -259,24 +265,63 @@ async def semear_acesso(
         admin = Usuario(
             login=ADMIN_LOGIN,
             nome="Administrador",
+            email=ADMIN_EMAIL,
             senha_hash=gerar_hash_senha(ADMIN_SENHA),
             superusuario=True,
-            empresa_id=empresa.id,
         )
         session.add(admin)
     admin.grupos = [grupos["Administradores"]]
     await session.flush()
+
+    # `employee_company` está sob RLS: o vínculo entra na empresa declarada.
+    await declarar_empresa(session, empresa.id)
+    vinculo = (
+        await session.execute(select(VinculoEmpresa).where(VinculoEmpresa.employee_id == admin.id))
+    ).scalar_one_or_none()
+    if vinculo is None:
+        session.add(
+            VinculoEmpresa(
+                tenant_id=empresa.id,
+                employee_id=admin.id,
+                grupo_id=grupos["Administradores"].id,
+            )
+        )
+    await session.flush()
     return admin, criado
 
 
+HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
+
+
+def _recusar_senha_padrao_fora_do_dev_local() -> None:
+    """`Config` já recusa o boot da API com `jwt_secret` default em produção — o seed cria
+    a conta que possui tudo com uma senha que está no Git (`admin12345`) e só imprime
+    "(troque a senha)", o que não impede nada. Mesma classe de risco, guarda equivalente.
+
+    Duas checagens, cinto e suspensório: `VITRA_AMBIENTE` é fácil de esquecer (o padrão é
+    `"dev"`), e quem roda este script contra um banco remoto por engano não necessariamente
+    setou a variável errada — só apontou `VITRA_DATABASE_URL` para o lugar errado. Comparar
+    o **host** pega esse segundo caso; comparar a URL inteira não serviria — uma senha que
+    por acaso contivesse `@banco-prod` bateria num `in` ingênuo sobre a string crua.
+    """
+    host = make_url(config.database_url).host or ""
+    fora_do_dev_local = config.ambiente == "producao" or host not in HOSTS_LOCAIS
+    if fora_do_dev_local and "VITRA_ADMIN_SENHA" not in os.environ:
+        raise SystemExit(
+            f"Recusando semear a senha padrão (admin12345) contra o host {host!r} — "
+            "defina VITRA_ADMIN_SENHA explícita no ambiente."
+        )
+
+
 async def main() -> None:
+    _recusar_senha_padrao_fora_do_dev_local()
     async with SessionLocal() as session:
         permissoes = await sincronizar_permissoes(session)
         ufs = await semear_ufs(session)
         await semear_cidades(session, ufs)
         await semear_bancos(session)
         apoio_criados = await semear_apoio(session)
-        empresas = await semear_empresas(session, ufs)
+        empresas = await semear_empresas(session)
         _, admin_criado = await semear_acesso(session, permissoes, empresas["VERTZ"])
         await session.commit()
 

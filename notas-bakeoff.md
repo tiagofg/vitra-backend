@@ -15,7 +15,7 @@ Stack: Python 3.12 · FastAPI 0.140 · SQLAlchemy 2.0 async · asyncpg · Alembi
 |---|---|---|
 | Tempo até os 4 testes verdes | **1 sessão** | sessão única, do `tenancy.py` ao verde |
 | Linhas de código (sem testes) | **2.580** no `app/` inteiro, das quais **315** no módulo do bake-off + **76** de `tenancy.py` + **241** de migração | linhas não-vazias e não-comentário |
-| Clareza da listagem server-side | — | é o outro que julga; ver `app/modules/bakeoff/service.py` |
+| Clareza da listagem server-side | — | é o outro que julga; ver `app/modules/produtos/service.py` |
 | Atrito com assistente de IA | **3 correções** + 2 lacunas de segurança na revisão | anotadas abaixo, na hora |
 | Salvar pai+filhos | já existia | `substituir_conjunto` da S0 |
 | Experiência subjetiva | **4/5** | ver no fim |
@@ -102,9 +102,10 @@ quem pediu tinha vínculo com a empresa pedida, e as quatro rotas do módulo nã
 credencial nenhuma — eram as únicas 4 operações sem `security` num contrato de 55. Quem
 soubesse um `tenant_id` lia e escrevia naquela empresa.
 
-Fechado em `app/modules/bakeoff/deps.py`: token obrigatório (401), empresa declarada (400),
-vínculo conferido em `employee_company` (403), nessa ordem, antes de qualquer query de
-negócio. A checagem roda **sob a própria política** — a empresa é declarada primeiro, então
+Fechado no `deps.py` do módulo (hoje `app/modules/auth/deps.py`, depois que o pacote
+`bakeoff` foi dissolvido nos módulos de domínio): token obrigatório (401), empresa
+declarada (400), vínculo conferido em `employee_company` (403), nessa ordem, antes de
+qualquer query de negócio. A checagem roda **sob a própria política** — a empresa é declarada primeiro, então
 a consulta a `employee_company` já sai recortada, sem `WHERE tenant_id` escrito à mão.
 
 **O que isso diz para a comparação entre as três stacks:** o trabalho de RLS não termina no

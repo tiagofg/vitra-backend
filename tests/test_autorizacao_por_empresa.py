@@ -20,20 +20,21 @@ import uuid
 from typing import Any
 
 import pytest
-from httpx import AsyncClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.modules.bakeoff.models import Colaborador, Empresa
-from tests.bakeoff import Cenario
+from app.modules.auth.models import Usuario, VinculoEmpresa
+from app.modules.auth.service import tem_vinculo
+from app.modules.empresa.models import Empresa
+from tests.cenario import Cenario, criar_usuario_vinculado
 
-# As quatro rotas do módulo. Antes desta correção eram as únicas 4 operações sem
-# `security` num contrato de 55 — fora as três que são públicas por natureza.
+# As rotas por empresa do módulo de produtos. Antes da unificação eram as únicas do
+# contrato sem `security` — fora as que são públicas por natureza.
 ROTAS = [
     ("GET", "/api/v1/produtos"),
     ("POST", "/api/v1/produtos"),
-    ("GET", "/api/v1/bakeoff/empresas"),
-    ("GET", "/api/v1/bakeoff/empresas/papeis"),
 ]
 
 PUBLICAS_POR_NATUREZA = {
@@ -52,8 +53,8 @@ PUBLICAS_POR_NATUREZA = {
 async def test_rota_sem_token_responde_401(
     cliente_bakeoff: AsyncClient, cenario: Cenario, metodo: str, rota: str
 ) -> None:
-    """`POST /produtos` gravava no banco sem token; `GET /bakeoff/empresas` listava o CNPJ
-    de todas as empresas do grupo."""
+    """`POST /produtos` gravava no banco sem token, e `GET /produtos` listava o catálogo
+    inteiro de qualquer empresa para quem soubesse o `X-Empresa-Id`."""
     resposta = await cliente_bakeoff.request(
         metodo,
         rota,
@@ -147,15 +148,45 @@ async def test_empresa_inexistente_responde_403(autenticado: AsyncClient) -> Non
     assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
 
 
-async def test_usuario_sem_email_nao_alcanca_nenhuma_empresa(
-    sem_email: AsyncClient, cenario: Cenario
+async def test_sem_permissao_prevalece_sobre_empresa_nao_declarada(
+    app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
 ) -> None:
-    """A ponte `usuario` → `employees` é o e-mail, e `Usuario.email` é nulável na S0.
+    """Sem `produto:ler` **e** sem `X-Empresa-Id`: precisa ser 403 sem_permissao, não 400
+    empresa_nao_declarada — senão a falta de permissão nem chega a ser checada.
 
-    Falha fechado de propósito: tratar a ausência como "não dá para checar, então deixa
-    passar" seria o mesmo furo com outra cara.
+    A ordem dos parâmetros do router decide qual das duas dependências dispara primeiro
+    quando as duas falhariam; `require(...)` vem antes de `SessaoEmpresa` no código
+    exatamente para este caso vencer.
     """
-    resposta = await sem_email.get(
+    usuario = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.abacaxi,),
+        sufixo_login="-sem-permissao",
+        com_permissao_produtos=False,
+    )
+
+    transporte = ASGITransport(app=app_bakeoff)
+    async with AsyncClient(
+        transport=transporte,
+        base_url="http://teste",
+        headers={"Authorization": f"Bearer {usuario.token}"},
+    ) as cliente:
+        resposta = await cliente.get("/api/v1/produtos")
+
+    assert resposta.status_code == 403, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "sem_permissao"
+
+
+async def test_usuario_sem_vinculo_nao_alcanca_nenhuma_empresa(
+    sem_vinculo: AsyncClient, cenario: Cenario
+) -> None:
+    """Autenticado, mas sem nenhuma linha em `employee_company`.
+
+    Falha fechado: não ter vínculo é tratado como não poder acessar, nunca como "não dá
+    para checar, então deixa passar".
+    """
+    resposta = await sem_vinculo.get(
         "/api/v1/produtos", headers={"X-Empresa-Id": str(cenario.abacaxi)}
     )
 
@@ -165,22 +196,24 @@ async def test_usuario_sem_email_nao_alcanca_nenhuma_empresa(
 # --- desativação corta o acesso -----------------------------------------------
 
 
-async def test_colaborador_desativado_perde_o_acesso(
+async def test_usuario_desativado_perde_o_acesso(
     autenticado: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario, email_do_token: str
 ) -> None:
     """Desativar é *o* mecanismo de offboarding do VITRA — precisa cortar o acesso.
 
-    Positivo primeiro: com a pessoa ativa, a listagem responde. Sem essa metade, o 403
-    abaixo passaria mesmo se a rota estivesse quebrada por outro motivo.
+    Desde a unificação (S0.5), `Usuario` é a mesma linha que antes se chamava `employees`:
+    desativá-la corta o **login inteiro**, não só o vínculo com uma empresa — por isso
+    401, e não mais 403. Positivo primeiro: com a pessoa ativa, a listagem responde. Sem
+    essa metade, o 401 abaixo passaria mesmo se a rota estivesse quebrada por outro motivo.
     """
     cabecalho = {"X-Empresa-Id": str(cenario.abacaxi)}
     assert (await autenticado.get("/api/v1/produtos", headers=cabecalho)).status_code == 200
 
-    await _desativar(motor_runtime, Colaborador, Colaborador.email == email_do_token)
+    await _desativar(motor_runtime, Usuario, Usuario.email == email_do_token)
 
     resposta = await autenticado.get("/api/v1/produtos", headers=cabecalho)
-    assert resposta.status_code == 403, resposta.text
-    assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
+    assert resposta.status_code == 401, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "nao_autenticado"
 
 
 async def test_empresa_desativada_deixa_de_ser_operavel(
@@ -203,7 +236,7 @@ async def test_empresa_desativada_deixa_de_ser_operavel(
 async def _desativar(motor: AsyncEngine, modelo: type, condicao: Any) -> None:
     """`tenants` e `employees` são globais — dá para atualizar sem declarar empresa."""
     async with AsyncSession(motor) as sessao:
-        await sessao.execute(update(modelo).where(condicao).values(active=False))
+        await sessao.execute(update(modelo).where(condicao).values(ativo=False))
         await sessao.commit()
 
 
@@ -225,3 +258,37 @@ async def test_quem_tem_vinculo_com_as_duas_alterna_pelo_cabecalho(
         codigos = {i["codigo"] for i in resposta.json()["itens"]}
         assert esperado in codigos
         assert proibido not in codigos
+
+
+async def test_tem_vinculo_filtra_por_tenant_mesmo_sem_rls(
+    sessao: AsyncSession,
+) -> None:
+    """`tem_vinculo` precisa recusar o vínculo cruzado **mesmo rodando sob o dono**.
+
+    A fixture `sessao` conecta como dono do banco de teste — que aqui é o superusuário do
+    Testcontainers — e por isso ignora RLS por definição. Se esta função dependesse só da
+    política do Postgres para recortar `employee_company`, o teste abaixo passaria mesmo
+    com o filtro de `tenant_id` ausente: era exatamente esse o furo que a revisão de
+    segurança do PR encontrou, e é o motivo de este teste não usar `motor_runtime`.
+    """
+    empresa_a = Empresa(codigo="AUT-A", razao_social="Autorização A")
+    empresa_b = Empresa(codigo="AUT-B", razao_social="Autorização B")
+    sessao.add_all([empresa_a, empresa_b])
+    await sessao.flush()
+
+    pessoa = Usuario(
+        login="vinculo-unico",
+        nome="Vínculo Único",
+        email="vinculo-unico@vertz.teste",
+        senha_hash="hash-nao-importa-aqui",
+    )
+    sessao.add(pessoa)
+    await sessao.flush()
+
+    sessao.add(VinculoEmpresa(tenant_id=empresa_a.id, employee_id=pessoa.id))
+    await sessao.flush()
+
+    # Positivo: o vínculo que existe de verdade tem que ser encontrado.
+    assert await tem_vinculo(sessao, pessoa.id, empresa_a.id) is True
+    # Negativo: a pessoa não tem vínculo com `empresa_b`, mesmo sob dono/superusuário.
+    assert await tem_vinculo(sessao, pessoa.id, empresa_b.id) is False

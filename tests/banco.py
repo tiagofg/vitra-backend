@@ -120,10 +120,10 @@ async def provisionar_papel_runtime(url_dono: str) -> None:
         $$
         """,
         f"GRANT {PAPEL_GRUPO} TO {USUARIO_RUNTIME}",
-        f"GRANT USAGE ON SCHEMA public TO {USUARIO_RUNTIME}",
-        # As tabelas da S0 ainda não passaram pelo retrabalho e não têm RLS; sem estes
-        # privilégios uma listagem de apoio quebraria ao rodar como runtime.
-        f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {USUARIO_RUNTIME}",
+        # Sem `GRANT USAGE ON SCHEMA public` avulso e sem `ON ALL TABLES`: desde a
+        # unificação (S0.5), toda tabela — global ou por empresa — recebe seu `GRANT` na
+        # própria migração de RLS, junto com o papel de grupo `vitra_app`. Dar mais que
+        # isso aqui mascararia uma tabela nova que esqueceu de entrar na migração.
     )
 
     motor = create_async_engine(url_dono, poolclass=NullPool, isolation_level="AUTOCOMMIT")

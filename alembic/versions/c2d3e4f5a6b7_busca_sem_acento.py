@@ -1,8 +1,8 @@
 """busca sem acento: extensao unaccent e wrapper imutavel
 
-Revision ID: 0402c7bf6bee
-Revises: 1f0577e25b9d
-Create Date: 2026-07-28 23:15:30.478967
+Revision ID: c2d3e4f5a6b7
+Revises: 24ebf846b5c4
+Create Date: 2026-07-31
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0402c7bf6bee"
-down_revision: str | None = "1f0577e25b9d"
+revision: str = "c2d3e4f5a6b7"
+down_revision: str | None = "24ebf846b5c4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

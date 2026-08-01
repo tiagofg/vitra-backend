@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from httpx import AsyncClient
 
 from app.modules.auth.models import Usuario
@@ -127,6 +129,57 @@ async def test_alterar_senha_exige_a_senha_atual_correta(
         headers=cabecalho_admin,
     )
     assert resposta.status_code == 401
+
+
+async def test_login_bloqueia_apos_tentativas_repetidas(
+    cliente: AsyncClient, admin: Usuario
+) -> None:
+    """Depois de 5 tentativas com senha errada, a conta bloqueia — mesmo com a senha certa
+    na sequência. Sem alguma trava, o argon2 (lento de propósito) seria a única barreira
+    contra um script tentando senhas em sequência.
+
+    Regressão: o contador de tentativas é incrementado e depois a própria falha de login
+    (`NaoAutenticado`) propaga — e `get_session()` desfaz a transação inteira quando
+    qualquer exceção sai do request. Sem um `commit()` explícito no meio do caminho, o
+    incremento nunca sobrevivia à falha que deveria contar, e a conta nunca bloqueava.
+    """
+    login = admin.login  # lido antes: request que falha expira o objeto da fixture
+
+    for _ in range(5):
+        resposta = await cliente.post(
+            "/api/v1/auth/login", json={"login": login, "senha": "chute-errado"}
+        )
+        assert resposta.status_code == 401
+
+    bloqueado = await cliente.post(
+        "/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO}
+    )
+    assert bloqueado.status_code == 401
+
+
+async def test_lockout_nao_vira_permanente_apos_a_janela_expirar(
+    cliente: AsyncClient, admin: Usuario, sessao
+) -> None:
+    """Regressão: sem reiniciar `tentativas_falhas` quando `bloqueado_ate` já passou, o
+    contador ficava travado em 5 para sempre — uma tentativa errada isolada, mesmo meses
+    depois, somava 5+1 e re-bloqueava por mais 15 minutos, indefinidamente. Vira DoS por
+    conta a 1 request a cada 15 min, sem precisar de senha nem token.
+    """
+    login = admin.login
+    admin.tentativas_falhas = 5
+    admin.bloqueado_ate = datetime.now(UTC) - timedelta(seconds=1)
+    await sessao.flush()
+
+    # Uma tentativa errada, já com a janela expirada: reinicia a contagem em vez de somar
+    # em cima do que já tinha — se não reiniciasse, isto sozinho já bloquearia de novo.
+    errada = await cliente.post(
+        "/api/v1/auth/login", json={"login": login, "senha": "ainda-errada"}
+    )
+    assert errada.status_code == 401
+
+    # A senha certa, logo em seguida, funciona — a conta não ficou bloqueada de novo.
+    certa = await cliente.post("/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO})
+    assert certa.status_code == 200
 
 
 async def test_senha_nova_precisa_ter_tamanho_minimo(
