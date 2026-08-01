@@ -129,6 +129,32 @@ async def test_alterar_senha_exige_a_senha_atual_correta(
     assert resposta.status_code == 401
 
 
+async def test_login_bloqueia_apos_tentativas_repetidas(
+    cliente: AsyncClient, admin: Usuario
+) -> None:
+    """Depois de 5 tentativas com senha errada, a conta bloqueia — mesmo com a senha certa
+    na sequência. Sem alguma trava, o argon2 (lento de propósito) seria a única barreira
+    contra um script tentando senhas em sequência.
+
+    Regressão: o contador de tentativas é incrementado e depois a própria falha de login
+    (`NaoAutenticado`) propaga — e `get_session()` desfaz a transação inteira quando
+    qualquer exceção sai do request. Sem um `commit()` explícito no meio do caminho, o
+    incremento nunca sobrevivia à falha que deveria contar, e a conta nunca bloqueava.
+    """
+    login = admin.login  # lido antes: request que falha expira o objeto da fixture
+
+    for _ in range(5):
+        resposta = await cliente.post(
+            "/api/v1/auth/login", json={"login": login, "senha": "chute-errado"}
+        )
+        assert resposta.status_code == 401
+
+    bloqueado = await cliente.post(
+        "/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO}
+    )
+    assert bloqueado.status_code == 401
+
+
 async def test_senha_nova_precisa_ter_tamanho_minimo(
     cliente: AsyncClient, cabecalho_admin: dict[str, str]
 ) -> None:

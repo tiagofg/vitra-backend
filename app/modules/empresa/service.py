@@ -6,8 +6,8 @@ from typing import Any
 from sqlalchemy import select
 
 from app.common.base_service import BaseService
-from app.core.errors import Conflito, RegraDeNegocio
-from app.core.listing import ListingSpec, LookupItem, contem_sem_acento
+from app.core.errors import RegraDeNegocio
+from app.core.listing import ListingSpec
 from app.modules.empresa.models import CentroCusto, Empresa, Filial
 from app.modules.empresa.schemas import (
     CentroCustoAtualizar,
@@ -27,36 +27,14 @@ class EmpresaService(BaseService[Empresa, EmpresaCriar, EmpresaAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "razao_social", "criado_em"),
         ordenacao_padrao="codigo",
+        campo_unico="codigo",
     )
 
-    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
-        codigo = valores.get("codigo")
-        existe = (
-            await self.session.execute(select(Empresa.id).where(Empresa.codigo == codigo))
-        ).first()
-        if existe:
-            raise Conflito(
-                f"Já existe empresa com código '{codigo}'.", campos={"codigo": "já utilizado"}
-            )
+    def _label_lookup(self, obj: Empresa) -> str:
+        return obj.nome_fantasia or obj.razao_social
 
-    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
-        stmt = select(Empresa).where(Empresa.ativo.is_(True))
-        if q:
-            stmt = stmt.where(
-                contem_sem_acento(Empresa.razao_social, q)
-                | contem_sem_acento(Empresa.nome_fantasia, q)
-                | contem_sem_acento(Empresa.codigo, q)
-            )
-        stmt = stmt.order_by(Empresa.codigo).limit(limite)
-        return [
-            LookupItem(
-                id=e.id,
-                codigo=e.codigo,
-                label=e.nome_fantasia or e.razao_social,
-                extras={"cnpj": e.cnpj},
-            )
-            for e in (await self.session.execute(stmt)).scalars().all()
-        ]
+    def _extras_lookup(self, obj: Empresa) -> dict[str, Any]:
+        return {"cnpj": obj.cnpj}
 
 
 class FilialService(BaseService[Filial, FilialCriar, FilialAtualizar]):
@@ -67,6 +45,7 @@ class FilialService(BaseService[Filial, FilialCriar, FilialAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "nome", "criado_em"),
         ordenacao_padrao="codigo",
+        campo_unico="codigo",
     )
 
 
@@ -78,9 +57,33 @@ class CentroCustoService(BaseService[CentroCusto, CentroCustoCriar, CentroCustoA
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "nome", "criado_em"),
         ordenacao_padrao="codigo",
+        campo_unico="codigo",
     )
 
     async def _antes_de_atualizar(self, obj: CentroCusto, valores: dict[str, Any]) -> None:
-        pai_id: uuid.UUID | None = valores.get("pai_id")
-        if pai_id is not None and pai_id == obj.id:
-            raise RegraDeNegocio("Um centro de custo não pode ser pai de si mesmo.")
+        await super()._antes_de_atualizar(obj, valores)
+
+        if "pai_id" not in valores or valores["pai_id"] is None:
+            return
+        pai_id: uuid.UUID = valores["pai_id"]
+
+        # Sobe a cadeia de pais a partir do `pai_id` candidato: se `obj` aparecer nela,
+        # apontar `obj.pai_id` para lá fecharia um ciclo (A → B → A). A FK composta
+        # garante que os dois são da mesma empresa, não que a árvore é acíclica — isso é
+        # regra de negócio, não constraint de banco.
+        visitados: set[uuid.UUID] = set()
+        atual: uuid.UUID | None = pai_id
+        while atual is not None:
+            if atual == obj.id:
+                raise RegraDeNegocio(
+                    "Essa mudança de pai formaria um ciclo na árvore de centros de custo.",
+                    codigo="ciclo_centro_custo",
+                )
+            if atual in visitados:
+                break  # ciclo pré-existente alheio a esta operação; não é o que valida aqui
+            visitados.add(atual)
+            atual = (
+                await self.session.execute(
+                    select(CentroCusto.pai_id).where(CentroCusto.id == atual)
+                )
+            ).scalar_one_or_none()

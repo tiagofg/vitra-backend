@@ -201,7 +201,7 @@ async def semear_apoio(session: AsyncSession) -> int:
     return criados
 
 
-async def semear_empresas(session: AsyncSession, ufs: dict[str, Uf]) -> dict[str, Empresa]:
+async def semear_empresas(session: AsyncSession) -> dict[str, Empresa]:
     atuais = {e.codigo: e for e in (await session.execute(select(Empresa))).scalars().all()}
     definicoes = [
         ("VERTZ", "Vertz Iluminação e Decoração Ltda", "Vertz"),
@@ -295,7 +295,7 @@ async def main() -> None:
         await semear_cidades(session, ufs)
         await semear_bancos(session)
         apoio_criados = await semear_apoio(session)
-        empresas = await semear_empresas(session, ufs)
+        empresas = await semear_empresas(session)
         _, admin_criado = await semear_acesso(session, permissoes, empresas["VERTZ"])
         await session.commit()
 

@@ -1900,13 +1900,23 @@
             }
           },
           "422": {
-            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
                   "validacao": {
                     "summary": "Corpo, query ou cabeçalho fora do schema.",
                     "value": {
@@ -2210,13 +2220,23 @@
             }
           },
           "422": {
-            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
                   "validacao": {
                     "summary": "Corpo, query ou cabeçalho fora do schema.",
                     "value": {
@@ -2499,13 +2519,23 @@
             }
           },
           "422": {
-            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
                   "validacao": {
                     "summary": "Corpo, query ou cabeçalho fora do schema.",
                     "value": {
@@ -9617,6 +9647,14 @@
       },
       "EmpresaAtualizar": {
         "properties": {
+          "comunicadores": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Comunicadores"
+          },
           "instagram": {
             "anyOf": [
               {
@@ -10259,6 +10297,14 @@
       },
       "EmpresaSaida": {
         "properties": {
+          "comunicadores": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Comunicadores"
+          },
           "instagram": {
             "anyOf": [
               {

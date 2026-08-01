@@ -22,10 +22,17 @@ class ClaimsToken:
     """O que um token de acesso carrega. `tenant_id` é a empresa ativa no momento da
     emissão — claim, não header: é o que deixa o cliente operar sem enviar `X-Empresa-Id`
     em todo pedido. Ausente para quem ainda não escolheu empresa (o token do login inicial,
-    antes de `POST /auth/trocar-empresa`)."""
+    antes de `POST /auth/trocar-empresa`).
+
+    `senha_versao` é a versão de `Usuario.senha_versao` no momento da emissão — conferida
+    em `usuario_atual` contra a versão atual da linha. Sem isto, trocar a senha não invalida
+    tokens já emitidos: um `access_token` vazado continuaria funcionando até expirar por
+    conta própria, mesmo depois da vítima trocar a senha achando que resolveu o problema.
+    """
 
     usuario_id: uuid.UUID
     tenant_id: uuid.UUID | None
+    senha_versao: int
 
 
 def gerar_hash_senha(senha: str) -> str:
@@ -48,7 +55,11 @@ def precisa_reidratar_hash(senha_hash: str) -> bool:
 
 
 def criar_token(
-    subject: uuid.UUID, tipo: TipoToken = "access", *, tenant_id: uuid.UUID | None = None
+    subject: uuid.UUID,
+    tipo: TipoToken = "access",
+    *,
+    tenant_id: uuid.UUID | None = None,
+    senha_versao: int = 0,
 ) -> str:
     agora = datetime.now(UTC)
     if tipo == "access":
@@ -61,6 +72,7 @@ def criar_token(
         "iat": int(agora.timestamp()),
         "exp": int(expira.timestamp()),
         "jti": uuid.uuid4().hex,
+        "sv": senha_versao,
     }
     if tenant_id is not None:
         payload["tenant"] = str(tenant_id)
@@ -86,9 +98,7 @@ def ler_claims(token: str, tipo_esperado: TipoToken = "access") -> ClaimsToken:
 
     tenant_bruto = payload.get("tenant")
     tenant_id = uuid.UUID(tenant_bruto) if tenant_bruto else None
-    return ClaimsToken(usuario_id=usuario_id, tenant_id=tenant_id)
-
-
-def ler_token(token: str, tipo_esperado: TipoToken = "access") -> uuid.UUID:
-    """Atalho para quem só precisa do `usuario_id` — a maioria dos chamadores."""
-    return ler_claims(token, tipo_esperado).usuario_id
+    # `.get("sv", 0)`: tokens emitidos antes deste campo existir (nenhum em produção ainda)
+    # não têm a chave; tratar como versão 0 é o mesmo valor inicial de `Usuario.senha_versao`.
+    senha_versao = int(payload.get("sv", 0))
+    return ClaimsToken(usuario_id=usuario_id, tenant_id=tenant_id, senha_versao=senha_versao)

@@ -136,7 +136,10 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=160), nullable=False),
         sa.Column("email", sa.String(length=160), nullable=False),
         sa.Column("senha_hash", sa.String(length=255), nullable=False),
+        sa.Column("senha_versao", sa.Integer(), nullable=False),
         sa.Column("superusuario", sa.Boolean(), nullable=False),
+        sa.Column("tentativas_falhas", sa.Integer(), nullable=False),
+        sa.Column("bloqueado_ate", sa.DateTime(timezone=True), nullable=True),
         sa.Column("limite_desconto_pct", sa.Numeric(precision=9, scale=4), nullable=False),
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(

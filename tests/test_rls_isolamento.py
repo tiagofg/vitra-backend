@@ -247,6 +247,22 @@ async def test_aplicacao_nao_consegue_afrouxar_a_politica(
     assert "must be owner" in str(erro.value).lower() or "denied" in str(erro.value).lower()
 
 
+@pytest.mark.parametrize("comando", ["UPDATE audit_log SET tabela = 'x'", "DELETE FROM audit_log"])
+async def test_audit_log_nao_aceita_update_nem_delete(
+    motor_runtime: AsyncEngine, comando: str
+) -> None:
+    """`audit_log` recebe só `SELECT`/`INSERT` do papel de runtime — ver o `GRANT` em
+    `b1c2d3e4f5a6_rls_multiempresa.py`. Sem isto, "append-only" seria promessa do código,
+    não garantia do banco: um bug de serviço, ou uma credencial de runtime vazada, poderia
+    apagar ou reescrever o rastro que a auditoria existe para preservar.
+    """
+    async with motor_runtime.connect() as conexao:
+        with pytest.raises(DBAPIError) as erro:
+            await conexao.execute(text(comando))
+
+    assert "permission denied" in str(erro.value).lower()
+
+
 async def test_toda_tabela_com_tenant_id_tem_rls_forcado(motor_runtime: AsyncEngine) -> None:
     """Confere no catálogo, não pelo comportamento, e **descobre** a lista em vez de repeti-la.
 

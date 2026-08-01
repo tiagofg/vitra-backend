@@ -5,11 +5,11 @@ import unicodedata
 import uuid
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.base_service import BaseService
-from app.core.errors import Conflito, NaoEncontrado
+from app.core.errors import NaoEncontrado
 from app.core.listing import ListingSpec, LookupItem, contem_sem_acento
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf
 from app.modules.apoio.schemas import (
@@ -38,6 +38,7 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("ordem", "codigo", "descricao", "criado_em"),
         ordenacao_padrao="descricao",
+        campo_unico="codigo",
     )
 
     def __init__(
@@ -52,6 +53,11 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
     def _stmt_base(self) -> Select[Any]:
         return select(TabelaApoio).where(TabelaApoio.dominio == self.dominio)
 
+    def _filtro_unicidade_extra(self) -> ColumnElement[bool]:
+        # `codigo` é único **por domínio**, não global: "preto" existe em `marca` e em
+        # `acabamento` ao mesmo tempo — ver `test_mesmo_codigo_em_dominios_diferentes_convive`.
+        return TabelaApoio.dominio == self.dominio
+
     async def obter(self, id_: uuid.UUID) -> TabelaApoio:
         obj = await super().obter(id_)
         if obj.dominio != self.dominio:
@@ -59,55 +65,26 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
             raise NaoEncontrado(self.nome_recurso, id_)
         return obj
 
-    async def criar(self, dados: ApoioCriar) -> TabelaApoio:
-        codigo = dados.codigo or await self._codigo_livre(slugificar(dados.descricao))
-        if await self._existe(codigo):
-            raise Conflito(
-                f"Já existe '{codigo}' no domínio '{self.dominio.value}'.",
-                campos={"codigo": "já utilizado"},
-            )
-        obj = TabelaApoio(
-            dominio=self.dominio,
-            codigo=codigo,
-            descricao=dados.descricao,
-            ordem=dados.ordem,
-            criado_por_id=self.usuario_id,
-        )
-        self.session.add(obj)
-        await self.session.flush()
-        return obj
+    async def _preparar_valores(self, dados: ApoioCriar) -> dict[str, Any]:
+        valores = await super()._preparar_valores(dados)
+        valores["dominio"] = self.dominio
+        # `codigo` opcional: o botão `...` da tela cria o valor só com a descrição. Sem
+        # `codigo` explícito, deriva do slug e já garante disponibilidade no laço — por
+        # isso `_antes_de_criar` (via `spec.campo_unico`) nunca rejeita um código derivado.
+        valores["codigo"] = dados.codigo or await self._codigo_livre(slugificar(dados.descricao))
+        return valores
 
-    async def _antes_de_atualizar(self, obj: TabelaApoio, valores: dict[str, Any]) -> None:
-        novo_codigo = valores.get("codigo")
-        if novo_codigo and novo_codigo != obj.codigo and await self._existe(novo_codigo):
-            raise Conflito(
-                f"Já existe '{novo_codigo}' no domínio '{self.dominio.value}'.",
-                campos={"codigo": "já utilizado"},
-            )
+    def _ordenacao_lookup(self) -> tuple[Any, ...]:
+        # `ordem` é a posição curada da tela (o combo do legado); `descricao` só desempata.
+        return (TabelaApoio.ordem, TabelaApoio.descricao)
 
-    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
-        stmt = self._stmt_base().where(TabelaApoio.ativo.is_(True))
-        if q:
-            stmt = stmt.where(
-                contem_sem_acento(TabelaApoio.descricao, q)
-                | contem_sem_acento(TabelaApoio.codigo, q)
-            )
-        stmt = stmt.order_by(TabelaApoio.ordem, TabelaApoio.descricao).limit(limite)
-        return [
-            LookupItem(id=a.id, codigo=a.codigo, label=a.descricao)
-            for a in (await self.session.execute(stmt)).scalars().all()
-        ]
-
-    async def _existe(self, codigo: str) -> bool:
-        stmt = select(TabelaApoio.id).where(
-            TabelaApoio.dominio == self.dominio, TabelaApoio.codigo == codigo
-        )
-        return (await self.session.execute(stmt)).first() is not None
+    def _label_lookup(self, obj: TabelaApoio) -> str:
+        return obj.descricao
 
     async def _codigo_livre(self, base: str) -> str:
         candidato = base
         sufixo = 2
-        while await self._existe(candidato):
+        while not await self._campo_disponivel("codigo", candidato):
             corte = 30 - len(str(sufixo)) - 1
             candidato = f"{base[:corte]}_{sufixo}"
             sufixo += 1
@@ -127,7 +104,12 @@ class UfService(BaseService[Uf, Any, Any]):
 
 
 class CidadeService(BaseService[Cidade, CidadeCriar, CidadeAtualizar]):
-    """Fora da tabela de apoio: `[busca +...]` com campos próprios (UF, IBGE)."""
+    """Fora da tabela de apoio: `[busca +...]` com campos próprios (UF, IBGE).
+
+    `lookup` não usa `BaseService.lookup()`: recebe um parâmetro extra (`uf`) que o
+    contrato genérico não tem, e o rótulo precisa do `join` carregado (`Cidade.uf`), não
+    só das colunas da própria linha.
+    """
 
     nome_recurso = "Cidade"
     spec = ListingSpec(
@@ -138,7 +120,12 @@ class CidadeService(BaseService[Cidade, CidadeCriar, CidadeAtualizar]):
         tem_ativo=False,
     )
 
-    async def lookup(self, q: str | None, limite: int, uf: str | None) -> list[LookupItem]:
+    # Assinatura deliberadamente diferente da base (parâmetro `uf` a mais) — ver o
+    # docstring da classe. Nunca chamado por uma referência `BaseService`, então o LSP
+    # que o mypy cobra aqui não se aplica de verdade.
+    async def lookup(  # type: ignore[override]
+        self, q: str | None, limite: int, uf: str | None
+    ) -> list[LookupItem]:
         stmt = select(Cidade).join(Uf)
         if q:
             stmt = stmt.where(contem_sem_acento(Cidade.nome, q))
@@ -164,14 +151,8 @@ class BancoService(BaseService[Banco, BancoCriar, BancoAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "nome"),
         ordenacao_padrao="codigo",
+        campo_unico="codigo",
     )
 
-    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
-        stmt = select(Banco).where(Banco.ativo.is_(True))
-        if q:
-            stmt = stmt.where(contem_sem_acento(Banco.nome, q) | contem_sem_acento(Banco.codigo, q))
-        stmt = stmt.order_by(Banco.codigo).limit(limite)
-        return [
-            LookupItem(id=b.id, codigo=b.codigo, label=f"{b.codigo} - {b.nome}")
-            for b in (await self.session.execute(stmt)).scalars().all()
-        ]
+    def _label_lookup(self, obj: Banco) -> str:
+        return f"{obj.codigo} - {obj.nome}"

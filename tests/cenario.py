@@ -179,43 +179,10 @@ async def criar_usuario_vinculado(
 
 
 async def criar_usuario_sem_vinculo(motor: AsyncEngine, cenario: Cenario) -> str:
-    """Usuário que loga mas não tem vínculo com nenhuma empresa. Devolve o token."""
-    async with AsyncSession(motor, expire_on_commit=False) as sessao:
-        usuario = Usuario(
-            login=f"sem-vinculo-{cenario.sufixo}",
-            nome="Sem Vínculo",
-            email=f"sem-vinculo+{cenario.sufixo}@grupo.dev",
-            senha_hash=_HASH_DESCARTAVEL,
-        )
-        sessao.add(usuario)
-        await sessao.commit()
-    return criar_token(usuario.id)
+    """Usuário que loga mas não tem vínculo com nenhuma empresa. Devolve o token.
 
-
-async def criar_pessoa_nas_duas(
-    motor: AsyncEngine, cenario: Cenario, nome: str = "ANA SILVA"
-) -> uuid.UUID:
-    """Mesma identidade global, vínculo em ambas as empresas.
-
-    É o caso da ANA SILVA do bake-off: uma pessoa, dois vínculos. Antes da unificação isso
-    provava que o papel não podia ser coluna de `employees`; hoje prova o mesmo sobre
-    `VinculoEmpresa.grupo_id` — o vínculo, não a identidade, é o que muda por empresa.
+    `empresas=()` faz `criar_usuario_vinculado` pular o laço de vínculo inteiro — é a
+    mesma criação de identidade, só que sem nenhuma empresa depois.
     """
-    email = f"ana+{cenario.sufixo}@grupo.dev"
-    async with AsyncSession(motor, expire_on_commit=False) as sessao:
-        pessoa = Usuario(
-            login=f"ana-{cenario.sufixo}",
-            nome=nome,
-            email=email,
-            senha_hash=_HASH_DESCARTAVEL,
-        )
-        sessao.add(pessoa)
-        await sessao.commit()
-
-    for empresa_id in (cenario.abacaxi, cenario.uva):
-        async with AsyncSession(motor, expire_on_commit=False) as sessao:
-            await declarar_empresa(sessao, empresa_id)
-            sessao.add(VinculoEmpresa(tenant_id=empresa_id, employee_id=pessoa.id))
-            await sessao.commit()
-
-    return pessoa.id
+    usuario = await criar_usuario_vinculado(motor, cenario, empresas=(), sufixo_login="-livre")
+    return usuario.token

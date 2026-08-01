@@ -3,9 +3,11 @@
 O contrato do VITRA exige isso desde a primeira tabela — não é uma fase de endurecimento
 posterior (ver "Retrabalho na S0 já entregue" no plano). `audit_log` é por empresa, como o
 que ela audita: cada linha aponta para `tenant_id`, e a política de RLS a recorta como
-qualquer outra tabela por empresa — exceto que o papel de runtime só recebe `INSERT`. Sem
-`UPDATE`/`DELETE` concedidos, "append-only" é uma garantia do banco, não uma promessa do
-código: nem um bug na aplicação nem uma conexão comprometida consegue apagar rastro.
+qualquer outra tabela por empresa — exceto que o papel de runtime só recebe `SELECT` e
+`INSERT` (ver o `GRANT` em `alembic/versions/b1c2d3e4f5a6_rls_multiempresa.py`, que trata
+`audit_log` à parte do laço genérico). Sem `UPDATE`/`DELETE` concedidos, "append-only" é
+uma garantia do banco, não uma promessa do código: nem um bug na aplicação nem uma conexão
+comprometida com as credenciais de runtime consegue apagar ou alterar rastro.
 
 **O que este módulo entrega agora:** o schema da tabela e `registrar_evento()`, para o
 serviço chamar explicitamente onde uma mutação importa (documentos, estoque — a partir de

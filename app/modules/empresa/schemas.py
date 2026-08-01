@@ -24,7 +24,7 @@ class EmpresaCriar(EnderecoCampos, ContatosCampos, RedesSociaisCampos, Comunicad
     observacao: str | None = Field(default=None, max_length=2000)
 
 
-class EmpresaAtualizar(EnderecoCampos, ContatosCampos, RedesSociaisCampos):
+class EmpresaAtualizar(EnderecoCampos, ContatosCampos, RedesSociaisCampos, ComunicadoresCampos):
     razao_social: str | None = Field(default=None, min_length=1, max_length=160)
     nome_fantasia: str | None = Field(default=None, max_length=160)
     cnpj: Cnpj | None = None
@@ -34,7 +34,9 @@ class EmpresaAtualizar(EnderecoCampos, ContatosCampos, RedesSociaisCampos):
     ativo: bool | None = None
 
 
-class EmpresaSaida(SaidaBase, EnderecoCampos, ContatosCampos, RedesSociaisCampos):
+class EmpresaSaida(
+    SaidaBase, EnderecoCampos, ContatosCampos, RedesSociaisCampos, ComunicadoresCampos
+):
     id: uuid.UUID
     codigo: str
     razao_social: str

@@ -53,15 +53,20 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "N"]
+select = ["E", "F", "I", "UP", "B", "SIM", "N", "S", "ARG"]
 ignore = [
     "B008",           # Depends() em default de argumento é o idioma do FastAPI
     "N818",           # exceções em português não levam sufixo "Error"
     "UP046", "UP047", # Generic[...] explícito: PEP 695 ainda atrapalha SQLAlchemy + mypy
+    "S101",           # `assert` é como pytest afirma — inevitável em `tests/`
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"alembic/versions/*" = ["E501"]
+"alembic/versions/*" = ["E501", "S608"]  # SQL cru é o próprio ponto das migrações de RLS
+# Senha de teste hardcoded e SQL cru são de propósito; fixture pedida só pelo efeito
+# colateral (`empresa`, `sao_paulo`, `consultor`, `cenario`) é o idioma do pytest, não
+# parâmetro esquecido — o `ARG001` que vale caçar é em código de produção.
+"tests/*" = ["S105", "S106", "S608", "ARG001"]
 
 [tool.mypy]
 python_version = "3.12"

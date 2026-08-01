@@ -4,12 +4,20 @@ import uuid
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.base_model import _ModeloComId
-from app.core.errors import NaoEncontrado, RegraDeNegocio
-from app.core.listing import ListingSpec, ListParams, Pagina, aplicar_listagem, paginar
+from app.core.errors import Conflito, NaoEncontrado, RegraDeNegocio
+from app.core.listing import (
+    ListingSpec,
+    ListParams,
+    LookupItem,
+    Pagina,
+    aplicar_listagem,
+    contem_sem_acento,
+    paginar,
+)
 
 M = TypeVar("M", bound=_ModeloComId)
 CriarSchema = TypeVar("CriarSchema", bound=BaseModel)
@@ -26,6 +34,11 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
     # dispara lazy load em contexto síncrono (MissingGreenlet) — o objeto recém-criado
     # já é persistente, então o SQLAlchemy tenta buscar a coleção no banco.
     colecoes_novas: tuple[str, ...] = ()
+
+    # Campos do schema de entrada que **não** são coluna — mapeiam para relação
+    # (`grupo_ids` → `Usuario.grupos`) e por isso saem de `model_dump()`/`setattr` e vão
+    # para `_resolver_relacoes`, o gancho feito para eles.
+    campos_relacao: frozenset[str] = frozenset()
 
     def __init__(
         self,
@@ -66,25 +79,33 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
         return await paginar(self.session, stmt, params, serializar)
 
     async def criar(self, dados: CriarSchema) -> M:
-        valores = dados.model_dump(exclude_unset=True)
+        valores = await self._preparar_valores(dados)
         if self.tenant_id is not None and hasattr(self.model, "tenant_id"):
-            valores.setdefault("tenant_id", self.tenant_id)
+            # Sobrescreve, não `setdefault`: o valor da transação tem que vencer o do
+            # corpo, nunca ceder a ele.
+            valores["tenant_id"] = self.tenant_id
         await self._antes_de_criar(valores)
         obj = self.model(**valores)
         for nome in self.colecoes_novas:
             setattr(obj, nome, [])  # antes do flush: não gera IO
         if self.usuario_id is not None:
             obj.criado_por_id = self.usuario_id
+        # Antes do `add()`, com o objeto ainda transiente: depois de entrar na sessão,
+        # atribuir uma relação dispara um lazy load da coleção *antiga* primeiro — e isso
+        # é síncrono, então estoura `MissingGreenlet` num contexto async. É o mesmo motivo
+        # de `colecoes_novas` inicializar antes daqui.
+        await self._resolver_relacoes(obj, dados)
         self.session.add(obj)
         await self.session.flush()
         return obj
 
     async def atualizar(self, id_: uuid.UUID, dados: AtualizarSchema) -> M:
         obj = await self.obter(id_)
-        valores = dados.model_dump(exclude_unset=True)
+        valores = dados.model_dump(exclude_unset=True, exclude=set(self.campos_relacao))
         await self._antes_de_atualizar(obj, valores)
         for campo, valor in valores.items():
             setattr(obj, campo, valor)
+        await self._resolver_relacoes(obj, dados)
         await self.session.flush()
         return obj
 
@@ -107,15 +128,113 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
         await self.session.flush()
         return obj
 
-    # Ganchos ------------------------------------------------------------
-    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
+    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
+        """`[busca +...]` / F4-F5-F6 padronizado. Dirigido pelo `spec` — `campos_busca`
+        para o filtro, `campo_codigo` para o código do item. Só o rótulo (`_label_lookup`)
+        precisa mesmo de código por recurso; ordenação e extras têm gancho para quem foge
+        do padrão (ver `ApoioService`/`EmpresaService`).
+
+        Quem tem forma genuinamente diferente — parâmetro extra, join — não usa isto; ver
+        `CidadeService.lookup`.
+        """
+        stmt = self._stmt_base()
+        if hasattr(self.model, "ativo"):
+            stmt = stmt.where(getattr(self.model, "ativo").is_(True))  # noqa: B009
+        if q and self.spec.campos_busca:
+            stmt = stmt.where(
+                or_(
+                    *[
+                        contem_sem_acento(getattr(self.model, campo), q)
+                        for campo in self.spec.campos_busca
+                    ]
+                )
+            )
+        stmt = stmt.order_by(*self._ordenacao_lookup()).limit(limite)
+        linhas = (await self.session.execute(stmt)).scalars().all()
+        return [
+            LookupItem(
+                id=obj.id,
+                codigo=getattr(obj, self.spec.campo_codigo) if self.spec.campo_codigo else None,
+                label=self._label_lookup(obj),
+                extras=self._extras_lookup(obj),
+            )
+            for obj in linhas
+        ]
+
+    # Ganchos — parâmetros não usados de propósito: são o ponto de extensão que a
+    # subclasse concreta preenche. `noqa: ARG002` em cada um, não um ignore geral do
+    # arquivo, para que um parâmetro esquecido de verdade em outro método continue pegando.
+
+    async def _preparar_valores(self, dados: CriarSchema) -> dict[str, Any]:
+        """Dados do schema → kwargs do modelo, na criação. Assíncrono porque derivar um
+        valor pode exigir consulta (`ApoioService` deriva `codigo` do slug da descrição,
+        checando disponibilidade). Sobrescrever também para excluir campos que não são
+        coluna (`senha` → `senha_hash`, nunca os dois) — é aqui, e não em `_antes_de_criar`,
+        porque o valor precisa existir antes do objeto ser instanciado."""
+        return dados.model_dump(exclude_unset=True, exclude=set(self.campos_relacao))
+
+    async def _resolver_relacoes(self, obj: M, dados: CriarSchema | AtualizarSchema) -> None:  # noqa: ARG002
+        """Preenche o que está em `campos_relacao` (`obj.grupos = ...`). Roda depois do
+        `setattr`/`add`, antes do `flush()` — o objeto já existe, a coleção pode ser
+        atribuída direto."""
         return None
+
+    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
+        """Checa unicidade quando `spec.campo_unico` está declarado. Sobrescrever para
+        regra adicional — chame `await super()._antes_de_criar(valores)` para manter esta
+        checagem."""
+        campo = self.spec.campo_unico
+        if campo and campo in valores:
+            await self._exigir_campo_livre(campo, valores[campo])
 
     async def _antes_de_atualizar(self, obj: M, valores: dict[str, Any]) -> None:
+        """Mesma checagem de `_antes_de_criar`, ignorando a própria linha (`obj.id`) e só
+        quando o valor de fato muda — trocar outros campos não deveria reavaliar
+        unicidade do que ficou igual."""
+        campo = self.spec.campo_unico
+        if campo and campo in valores and valores[campo] != getattr(obj, campo):
+            await self._exigir_campo_livre(campo, valores[campo], exceto=obj.id)
+
+    async def _antes_de_desativar(self, obj: M) -> None:  # noqa: ARG002
         return None
 
-    async def _antes_de_desativar(self, obj: M) -> None:
+    async def _antes_de_reativar(self, obj: M) -> None:  # noqa: ARG002
         return None
 
-    async def _antes_de_reativar(self, obj: M) -> None:
+    def _filtro_unicidade_extra(self) -> ColumnElement[bool] | None:
+        """Recorte adicional para a checagem de `spec.campo_unico` — ex.: `TabelaApoio`
+        é única por `(dominio, codigo)`, não só `codigo`."""
         return None
+
+    async def _campo_disponivel(
+        self, campo: str, valor: Any, *, exceto: uuid.UUID | None = None
+    ) -> bool:
+        """`True` se nenhum outro registro visível tem `campo == valor`. Aplica
+        `_filtro_unicidade_extra()` quando declarado — é o que faz `TabelaApoio.codigo`
+        ser único por domínio, não global."""
+        stmt = select(self.model.id).where(getattr(self.model, campo) == valor)
+        extra = self._filtro_unicidade_extra()
+        if extra is not None:
+            stmt = stmt.where(extra)
+        if exceto is not None:
+            stmt = stmt.where(self.model.id != exceto)
+        return (await self.session.execute(stmt)).first() is None
+
+    async def _exigir_campo_livre(
+        self, campo: str, valor: Any, *, exceto: uuid.UUID | None = None
+    ) -> None:
+        if not await self._campo_disponivel(campo, valor, exceto=exceto):
+            raise Conflito(
+                f"Já existe {self.nome_recurso.lower()} com {campo} '{valor}'.",
+                campos={campo: "já utilizado"},
+            )
+
+    def _ordenacao_lookup(self) -> tuple[Any, ...]:
+        campo = self.spec.campo_codigo or self.spec.ordenacao_padrao
+        return (getattr(self.model, campo),)
+
+    def _label_lookup(self, obj: M) -> str:
+        raise NotImplementedError(f"{type(self).__name__} precisa de _label_lookup")
+
+    def _extras_lookup(self, obj: M) -> dict[str, Any]:  # noqa: ARG002
+        return {}

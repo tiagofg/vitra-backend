@@ -37,13 +37,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 def criar_app() -> FastAPI:
+    # Em produção, `/docs` e `/openapi.json` saem do ar: o contrato já é publicado como
+    # arquivo versionado (`make openapi`), e servir o schema completo — rotas, formatos de
+    # erro, nomes internos — publicamente não tem contrapartida depois que o front já gera
+    # o cliente a partir do arquivo. `None` desliga a rota; `scripts/exportar_openapi.py`
+    # continua funcionando porque chama `app.openapi()` direto, sem depender da URL.
+    publicar_docs = config.ambiente != "producao"
     app = FastAPI(
         title="VITRA API",
         description=DESCRICAO,
         version="0.1.0",
         lifespan=lifespan,
-        docs_url="/docs",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if publicar_docs else None,
+        openapi_url="/openapi.json" if publicar_docs else None,
     )
 
     if config.cors_origens:

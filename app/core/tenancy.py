@@ -60,7 +60,7 @@ class SemVinculoComEmpresa(ErroDominio):
     do Postgres — impecável — estaria protegendo um recorte escolhido por quem chama.
 
     403 e não 404: dizer "não encontrado" esconderia de propósito a existência da empresa,
-    e o `tenant_id` não é segredo (ele aparece em `GET /bakeoff/empresas`). O que é
+    e o `tenant_id` não é segredo (ele aparece em `GET /empresas`, rota global). O que é
     controlado é o acesso, não a existência.
     """
 

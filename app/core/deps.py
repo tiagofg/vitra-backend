@@ -45,6 +45,11 @@ async def usuario_atual(session: Sessao, claims: ClaimsDoToken) -> Usuario:
         raise NaoAutenticado("Usuário do token não existe mais.")
     if not usuario.ativo:
         raise NaoAutenticado("Usuário desativado.")
+    # Token emitido antes da senha mudar: `alterar_senha`/`definir_senha` incrementam
+    # `senha_versao`, e um token com a versão antiga para de autenticar mesmo dentro do
+    # prazo de validade — sem isto, trocar a senha não invalidava o que já tinha vazado.
+    if claims.senha_versao != usuario.senha_versao:
+        raise NaoAutenticado("Token emitido antes da última troca de senha.")
     return usuario
 
 

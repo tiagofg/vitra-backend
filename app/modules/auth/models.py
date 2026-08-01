@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import enum
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     Column,
+    DateTime,
     ForeignKey,
     Numeric,
     PrimaryKeyConstraint,
@@ -19,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.base_model import Base, ModeloBase
 from app.common.mixins import AtivoMixin, TenantScopedMixin
-from app.core.numbering import TipoDocumento, enum_col
+from app.core.numbering import TIPO_DOCUMENTO_ENUM, TipoDocumento, enum_col
 
 usuario_grupo = Table(
     "usuario_grupo",
@@ -82,7 +84,15 @@ class Usuario(ModeloBase, AtivoMixin):
     # contas com o mesmo e-mail seguem sendo o mesmo tipo de furo de identidade.
     email: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Incrementada a cada troca de senha. Vai no claim `sv` do token (`ClaimsToken`) e é
+    # conferida em `usuario_atual`: um token emitido antes da troca deixa de autenticar,
+    # mesmo dentro do prazo de validade — sem isto, uma senha vazada e depois trocada não
+    # invalidava o token que já estava com quem não devia.
+    senha_versao: Mapped[int] = mapped_column(default=0, nullable=False)
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Trava de força bruta em `/auth/login` — ver `AuthService.autenticar`.
+    tentativas_falhas: Mapped[int] = mapped_column(default=0, nullable=False)
+    bloqueado_ate: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # `Alterar Limites` do orçamento: acima disto o desconto exige autorização (S4).
     limite_desconto_pct: Mapped[Decimal] = mapped_column(
@@ -107,6 +117,14 @@ class VinculoEmpresa(Base, TenantScopedMixin):
     permissões. `grupo_id` nulável por ora: o RBAC por empresa (permissão que muda conforme
     a empresa ativa) é o que a S2 em diante passa a exercer de verdade; aqui a coluna já
     existe para que a tabela não precise de outra migração quando isso acontecer.
+
+    **Até lá, `grupo_id` não é lido por `require()` em runtime.** `Usuario.pode()` resolve
+    permissão só a partir de `usuario_grupo` — global, sem RLS, a mesma para o usuário em
+    qualquer empresa. Ou seja: hoje o recorte por empresa protege *dado de tabela por
+    empresa* (é o que o RLS garante), não *ação administrativa* — um `empresa:editar`
+    concedido a alguém vale para editar qualquer empresa da instalação, não só a ativa.
+    Isso é esperado e não é a lacuna que este comentário registra; a lacuna é não deixar
+    isso implícito.
     """
 
     __tablename__ = "employee_company"
@@ -147,9 +165,7 @@ class AutorizacaoDocumento(ModeloBase):
 
     __tablename__ = "autorizacao_documento"
 
-    documento_tipo: Mapped[TipoDocumento] = mapped_column(
-        enum_col(TipoDocumento, "tipo_documento"), nullable=False
-    )
+    documento_tipo: Mapped[TipoDocumento] = mapped_column(TIPO_DOCUMENTO_ENUM, nullable=False)
     documento_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     tipo: Mapped[TipoAutorizacao] = mapped_column(
         enum_col(TipoAutorizacao, "tipo_autorizacao"), nullable=False

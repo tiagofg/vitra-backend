@@ -24,7 +24,8 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.modules.auth.models import Usuario
+from app.modules.auth.models import Usuario, VinculoEmpresa
+from app.modules.auth.service import tem_vinculo
 from app.modules.empresa.models import Empresa
 from tests.cenario import Cenario
 
@@ -226,3 +227,37 @@ async def test_quem_tem_vinculo_com_as_duas_alterna_pelo_cabecalho(
         codigos = {i["codigo"] for i in resposta.json()["itens"]}
         assert esperado in codigos
         assert proibido not in codigos
+
+
+async def test_tem_vinculo_filtra_por_tenant_mesmo_sem_rls(
+    sessao: AsyncSession,
+) -> None:
+    """`tem_vinculo` precisa recusar o vínculo cruzado **mesmo rodando sob o dono**.
+
+    A fixture `sessao` conecta como dono do banco de teste — que aqui é o superusuário do
+    Testcontainers — e por isso ignora RLS por definição. Se esta função dependesse só da
+    política do Postgres para recortar `employee_company`, o teste abaixo passaria mesmo
+    com o filtro de `tenant_id` ausente: era exatamente esse o furo que a revisão de
+    segurança do PR encontrou, e é o motivo de este teste não usar `motor_runtime`.
+    """
+    empresa_a = Empresa(codigo="AUT-A", razao_social="Autorização A")
+    empresa_b = Empresa(codigo="AUT-B", razao_social="Autorização B")
+    sessao.add_all([empresa_a, empresa_b])
+    await sessao.flush()
+
+    pessoa = Usuario(
+        login="vinculo-unico",
+        nome="Vínculo Único",
+        email="vinculo-unico@vertz.teste",
+        senha_hash="hash-nao-importa-aqui",
+    )
+    sessao.add(pessoa)
+    await sessao.flush()
+
+    sessao.add(VinculoEmpresa(tenant_id=empresa_a.id, employee_id=pessoa.id))
+    await sessao.flush()
+
+    # Positivo: o vínculo que existe de verdade tem que ser encontrado.
+    assert await tem_vinculo(sessao, pessoa.id, empresa_a.id) is True
+    # Negativo: a pessoa não tem vínculo com `empresa_b`, mesmo sob dono/superusuário.
+    assert await tem_vinculo(sessao, pessoa.id, empresa_b.id) is False

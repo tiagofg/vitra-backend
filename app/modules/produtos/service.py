@@ -35,4 +35,10 @@ class ProdutoService(BaseService[Produto, ProdutoCriar, Any]):
         # `selectinload` e não `joinedload`: o carregamento sai numa segunda consulta, com
         # `IN (...)`, então o `LIMIT` da paginação continua contando **produtos**. Com
         # `joinedload` o limite passaria a cortar linhas do join.
+        #
+        # Isso importa porque `app.core.listing.paginar()` conta com
+        # `select(func.count()).select_from(stmt.order_by(None).subquery())` — correto
+        # enquanto o carregamento sai numa consulta separada. Trocar para `joinedload` faria
+        # o `COUNT` contar linhas do join, e o total divergiria de `len(itens)` (que já
+        # precisa de `.unique()` por causa do join duplicando linhas).
         return select(Produto).options(selectinload(Produto.variantes).selectinload(Variante.preco))

@@ -186,13 +186,13 @@ async def listar_usuarios(
 
 
 @router_usuarios.post("", response_model=UsuarioSaida, status_code=status.HTTP_201_CREATED)
-@pode_falhar(NAO_ENCONTRADO, CONFLITO)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO, REGRA_DE_NEGOCIO)
 async def criar_usuario(
     dados: UsuarioCriar,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.criar))],
 ) -> UsuarioSaida:
-    novo = await UsuarioService(session, usuario.id).criar(dados)
+    novo = await UsuarioService(session, usuario.id, ator=usuario).criar(dados)
     return UsuarioSaida.model_validate(novo)
 
 
@@ -207,26 +207,28 @@ async def obter_usuario(
 
 
 @router_usuarios.put("/{usuario_id}", response_model=UsuarioSaida)
-@pode_falhar(NAO_ENCONTRADO, CONFLITO)
+@pode_falhar(NAO_ENCONTRADO, CONFLITO, REGRA_DE_NEGOCIO)
 async def atualizar_usuario(
     usuario_id: uuid.UUID,
     dados: UsuarioAtualizar,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
 ) -> UsuarioSaida:
-    alvo = await UsuarioService(session, usuario.id).atualizar(usuario_id, dados)
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).atualizar(usuario_id, dados)
     return UsuarioSaida.model_validate(alvo)
 
 
 @router_usuarios.post("/{usuario_id}/senha", status_code=status.HTTP_204_NO_CONTENT)
-@pode_falhar(NAO_ENCONTRADO)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
 async def redefinir_senha(
     usuario_id: uuid.UUID,
     dados: UsuarioSenhaEntrada,
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
 ) -> None:
-    await UsuarioService(session, usuario.id).definir_senha(usuario_id, dados.senha_nova)
+    await UsuarioService(session, usuario.id, ator=usuario).definir_senha(
+        usuario_id, dados.senha_nova
+    )
 
 
 @router_usuarios.delete("/{usuario_id}", response_model=UsuarioSaida)

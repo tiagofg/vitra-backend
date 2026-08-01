@@ -23,6 +23,14 @@ def enum_col(tipo: type[enum.Enum], nome: str) -> Enum:
     return Enum(tipo, name=nome, values_callable=lambda e: [m.value for m in e])
 
 
+# Um objeto só, reusado onde `TipoDocumento` aparece fora desta tabela (hoje,
+# `AutorizacaoDocumento.documento_tipo`). Duas chamadas de `enum_col(TipoDocumento, ...)`
+# criam dois objetos `sa.Enum` Python distintos para o mesmo tipo `tipo_documento` do
+# Postgres — funciona hoje, mas é o footgun clássico do `sa.Enum`: basta o autogenerate
+# resolver os dois numa ordem diferente para tentar um `CREATE TYPE` duplicado.
+TIPO_DOCUMENTO_ENUM = enum_col(TipoDocumento, "tipo_documento")
+
+
 class ContadorDocumento(ModeloTenant):
     """Sequência por (empresa, tipo, série).
 
@@ -37,9 +45,7 @@ class ContadorDocumento(ModeloTenant):
         UniqueConstraint("tenant_id", "tipo", "serie", name="uq_contador_tenant_tipo_serie"),
     )
 
-    tipo: Mapped[TipoDocumento] = mapped_column(
-        enum_col(TipoDocumento, "tipo_documento"), nullable=False
-    )
+    tipo: Mapped[TipoDocumento] = mapped_column(TIPO_DOCUMENTO_ENUM, nullable=False)
     serie: Mapped[str] = mapped_column(String(10), nullable=False, default="1")
     ultimo_numero: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 

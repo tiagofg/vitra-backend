@@ -104,7 +104,14 @@ def _criar_papel_runtime() -> None:
     # Só DML. Nada de OWNER, nada de DDL: um papel que pudesse `ALTER TABLE` poderia
     # desligar a própria política — e o teste de isolamento nº 4 existe para provar isso.
     for tabela in TABELAS_POR_EMPRESA + TABELAS_GLOBAIS:
+        if tabela == "audit_log":
+            continue
         op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tabela} TO {PAPEL_RUNTIME}")
+
+    # `audit_log` é o caso à parte: SELECT e INSERT, nunca UPDATE nem DELETE. É o que faz
+    # "append-only" ser uma garantia do banco — nem um bug na aplicação, nem uma conexão
+    # comprometida com as credenciais de runtime conseguem apagar ou alterar o rastro.
+    op.execute(f"GRANT SELECT, INSERT ON audit_log TO {PAPEL_RUNTIME}")
 
 
 def _ligar_rls(tabela: str) -> None:

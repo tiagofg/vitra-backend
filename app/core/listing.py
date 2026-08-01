@@ -56,14 +56,23 @@ class ListParams:
         return (self.pagina - 1) * self.tamanho
 
 
+_CORINGAS_ILIKE = str.maketrans({"\\": "\\\\", "%": "\\%", "_": "\\_"})
+
+
 def contem_sem_acento(coluna: Any, texto: str) -> ColumnElement[bool]:
     """`ILIKE %texto%` ignorando acento — 'sao' encontra 'São Paulo'.
 
     Quem digita num `[busca +...]` não põe acento. `vitra_unaccent` é o wrapper IMMUTABLE
-    criado na migração `0402c7bf6bee`; normalizar os dois lados é o que faz o casamento
+    criado na migração `c2d3e4f5a6b7`; normalizar os dois lados é o que faz o casamento
     funcionar nos dois sentidos ('são' também encontra 'Sao').
+
+    `texto` é escapado antes de virar padrão: sem isto, buscar por `100%` casaria com
+    qualquer coisa depois de `100`, e `_` casaria com qualquer caractere — não é SQL
+    injetável (o valor vai ligado), é o usuário sem querer transformar busca literal em
+    padrão.
     """
-    return func.vitra_unaccent(coluna).ilike(func.vitra_unaccent(f"%{texto}%"))
+    escapado = texto.translate(_CORINGAS_ILIKE)
+    return func.vitra_unaccent(coluna).ilike(func.vitra_unaccent(f"%{escapado}%"), escape="\\")
 
 
 @dataclass(frozen=True)
@@ -77,6 +86,10 @@ class ListingSpec:
     campos_ordenacao: tuple[str, ...] = field(default_factory=tuple)
     ordenacao_padrao: str = "criado_em"
     tem_ativo: bool = True
+    # Campo com unicidade de negócio (não necessariamente a única constraint do banco —
+    # `TabelaApoio` soma um recorte extra via `_filtro_unicidade_extra`). Declarado aqui
+    # em vez de cada serviço escrever a própria checagem: ver `BaseService._antes_de_criar`.
+    campo_unico: str | None = None
 
 
 class Pagina(BaseModel, Generic[T]):
@@ -139,7 +152,8 @@ async def paginar(
         total=total,
         pagina=params.pagina,
         tamanho=params.tamanho,
-        paginas=math.ceil(total / params.tamanho) if params.tamanho else 0,
+        # `tamanho` nunca é 0: `ListParams.tamanho` é `Query(..., ge=1)`.
+        paginas=math.ceil(total / params.tamanho),
     )
 
 
