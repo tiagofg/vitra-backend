@@ -15,9 +15,10 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-**Estado:** S0, **SB (bake-off)** e **S0.5 (unificação)** estão entregues neste repositório —
-125 testes verdes. O bake-off trouxe consigo uma mudança arquitetural que este plano absorveu
-por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
+**Estado:** S0, **SB (bake-off)** e **S0.5 (unificação)** estão entregues neste repositório e
+mergeadas em `main` (PR #6, commit `957cde8`) — 137 testes verdes. O bake-off trouxe consigo
+uma mudança arquitetural que este plano absorveu por inteiro: **multiempresa deixa de ser
+`empresa_id` filtrado no serviço e passa a ser
 Row-Level Security com chave composta**. A S0.5 fundiu os dois desenhos que coexistiam desde
 então (`Usuario`/`employees` numa identidade só, `Empresa`→`tenants`, `TabelaApoio`→
 `catalog_lookups`, `Filial`/`CentroCusto`/`ContadorDocumento` sob RLS) e fechou as três decisões
@@ -745,8 +746,9 @@ Três decisões tomadas durante a execução, que valem para o VITRA real:
   sem empresa, `403` sem vínculo, antes de qualquer query de negócio. A checagem roda sob a
   própria política, então nem ela escreve filtro de empresa.
 
-**S0.5 — Unificação dos dois desenhos.** ✅ *Entregue* (PR #6). A S0 (`EmpresaScopedMixin`,
-`empresa_id` filtrado no serviço) e a SB (`TenantScopedMixin`, RLS) coexistiam desde que o
+**S0.5 — Unificação dos dois desenhos.** ✅ *Entregue* — PR #6 mergeado em `main` (`957cde8`,
+2026-08-01). A S0 (`EmpresaScopedMixin`, `empresa_id` filtrado no serviço) e a SB
+(`TenantScopedMixin`, RLS) coexistiam desde que o
 bake-off terminou. Esta fase funde os dois antes de começar a S1, para que nenhuma fase nova
 precisasse escolher qual desenho usar:
 
@@ -782,6 +784,16 @@ automatizados: o contador de tentativas não sobrevivia à própria falha de log
 `get_session()` desfaz a transação inteira quando qualquer exceção sai do request. De quebra,
 adianta parte do que a S6 previa: guarda de segredo, `IntegrityError` sem vazar detalhe do
 Postgres ao cliente, `/docs`/`/openapi.json` fora do ar em produção.
+
+Três passes seguintes da mesma revisão fecharam o que sobrou: bloqueio de força bruta
+permanente (o contador de tentativas não reiniciava depois da janela expirar — virava DoS de
+uma tentativa a cada 15 min); a mesma trava de escalada de `usuario:editar` faltando em
+`desativar_usuario` (só `criar`/`atualizar`/`definir_senha` estavam cobertas — ganhou também
+`reativar_usuario`, rota que não existia); e por fim o teste de RBAC de produtos, que rodava
+sob usuário com `superusuario=True` e por isso nunca exercitava `require("produto", ...)` de
+verdade — trocado por um grupo com permissão real, mais um teste negativo e a correção da
+ordem 400×403 que a ausência desse teste tinha deixado passar despercebida. `scripts/seed.py`
+ganhou a mesma trava por host que o seed do bake-off já tinha (não só por `VITRA_AMBIENTE`).
 
 **S1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa
