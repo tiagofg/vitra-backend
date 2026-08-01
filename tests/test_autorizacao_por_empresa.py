@@ -20,14 +20,15 @@ import uuid
 from typing import Any
 
 import pytest
-from httpx import AsyncClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.modules.auth.models import Usuario, VinculoEmpresa
 from app.modules.auth.service import tem_vinculo
 from app.modules.empresa.models import Empresa
-from tests.cenario import Cenario
+from tests.cenario import Cenario, criar_usuario_vinculado
 
 # As rotas por empresa do módulo de produtos. Antes da unificação eram as únicas do
 # contrato sem `security` — fora as que são públicas por natureza.
@@ -145,6 +146,36 @@ async def test_empresa_inexistente_responde_403(autenticado: AsyncClient) -> Non
 
     assert resposta.status_code == 403
     assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
+
+
+async def test_sem_permissao_prevalece_sobre_empresa_nao_declarada(
+    app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
+) -> None:
+    """Sem `produto:ler` **e** sem `X-Empresa-Id`: precisa ser 403 sem_permissao, não 400
+    empresa_nao_declarada — senão a falta de permissão nem chega a ser checada.
+
+    A ordem dos parâmetros do router decide qual das duas dependências dispara primeiro
+    quando as duas falhariam; `require(...)` vem antes de `SessaoEmpresa` no código
+    exatamente para este caso vencer.
+    """
+    usuario = await criar_usuario_vinculado(
+        motor_runtime,
+        cenario,
+        empresas=(cenario.abacaxi,),
+        sufixo_login="-sem-permissao",
+        com_permissao_produtos=False,
+    )
+
+    transporte = ASGITransport(app=app_bakeoff)
+    async with AsyncClient(
+        transport=transporte,
+        base_url="http://teste",
+        headers={"Authorization": f"Bearer {usuario.token}"},
+    ) as cliente:
+        resposta = await cliente.get("/api/v1/produtos")
+
+    assert resposta.status_code == 403, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "sem_permissao"
 
 
 async def test_usuario_sem_vinculo_nao_alcanca_nenhuma_empresa(

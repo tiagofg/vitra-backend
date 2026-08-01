@@ -167,6 +167,13 @@ async def definir_permissoes_do_grupo(
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("grupo", Acao.editar))],
 ) -> GrupoSaida:
+    """`grupo:editar` é, na prática, quase-admin: quem tem essa permissão pode conceder ao
+    próprio grupo (ou a qualquer outro) todo o catálogo — inclusive `usuario:*` — sem
+    passar pelas travas de escalada que protegem `superusuario` em `UsuarioService`. Não é
+    a mesma lacuna: aquelas travam *fabricar/promover um superusuário*, esta não trava
+    *acumular, via grupo, o mesmo poder efetivo*. É o próximo alvo natural de uma trava
+    equivalente, não corrigido agora.
+    """
     grupo = await GrupoService(session, usuario.id).definir_permissoes(
         grupo_id, dados.permissao_ids
     )

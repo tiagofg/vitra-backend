@@ -22,14 +22,19 @@ import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.security import criar_token, gerar_hash_senha
 from app.core.tenancy import GUC_EMPRESA, declarar_empresa
-from app.modules.auth.models import Usuario, VinculoEmpresa
+from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa
 from app.modules.empresa.models import Empresa
 from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
+
+# Nome fixo do grupo que `criar_usuario_vinculado` concede por padrão. Get-or-create: vários
+# testes criam usuários na mesma execução, e `Grupo.nome`/`Permissao.(recurso, acao)` são
+# `UniqueConstraint` — recriar a cada chamada estouraria a partir do segundo teste.
+_NOME_GRUPO_PRODUTOS = "produtos (cenário de teste)"
 
 # Lê `GUC_EMPRESA` em vez de repetir a string. Não é a linha duplicada que custa: com o
 # nome literal aqui, renomear o GUC deixaria `test_guc_vazio_nao_estoura_o_cast` **verde**
@@ -140,12 +145,44 @@ async def _catalogo_da_empresa(
         return sem_preco.id
 
 
+async def _grupo_produtos(sessao: AsyncSession) -> Grupo:
+    """Grupo global `produto:ler`+`produto:criar`, criado sob demanda e reaproveitado.
+
+    Get-or-create em vez de fixture de schema porque só quem bate em `/produtos` precisa
+    dele — os testes de RLS/vínculo puro (a maioria do cenário) nunca leem `permissoes_efetivas`.
+    """
+    grupo = (
+        await sessao.execute(select(Grupo).where(Grupo.nome == _NOME_GRUPO_PRODUTOS))
+    ).scalar_one_or_none()
+    if grupo is not None:
+        return grupo
+
+    permissoes = []
+    for acao in ("ler", "criar"):
+        permissao = (
+            await sessao.execute(
+                select(Permissao).where(Permissao.recurso == "produto", Permissao.acao == acao)
+            )
+        ).scalar_one_or_none()
+        if permissao is None:
+            permissao = Permissao(recurso="produto", acao=acao, descricao=f"{acao} produto")
+            sessao.add(permissao)
+            await sessao.flush()
+        permissoes.append(permissao)
+
+    grupo = Grupo(nome=_NOME_GRUPO_PRODUTOS, permissoes=permissoes)
+    sessao.add(grupo)
+    await sessao.flush()
+    return grupo
+
+
 async def criar_usuario_vinculado(
     motor: AsyncEngine,
     cenario: Cenario,
     *,
     empresas: tuple[uuid.UUID, ...],
     sufixo_login: str = "",
+    com_permissao_produtos: bool = True,
 ) -> UsuarioDeTeste:
     """Cria quem loga e o vínculo dele com cada empresa em `empresas`.
 
@@ -153,19 +190,24 @@ async def criar_usuario_vinculado(
     do vizinho. O token é emitido direto em vez de passar pelo login: a suíte não está
     testando autenticação aqui, e o argon2 custa caro por teste.
 
-    `superusuario=True`: este cenário exercita RLS e vínculo entre empresas, não RBAC
-    recurso+ação — sem isto, toda rota que ganhou `require(...)` (produtos, por exemplo)
-    devolveria 403 antes mesmo de chegar na checagem que o teste quer provar.
+    `com_permissao_produtos=True` (padrão): concede o grupo `produto:ler`+`produto:criar`.
+    Este cenário existe para exercitar RLS e vínculo entre empresas, não RBAC recurso+ação —
+    sem a concessão, toda rota que ganhou `require(...)` (produtos, por exemplo) devolveria
+    403 antes mesmo de chegar na checagem que o teste quer provar. Um `superusuario=True`
+    mascararia a mesma checagem, então a concessão é uma permissão real, não um bypass.
+    Passar `False` monta o caso oposto — autenticado, com ou sem vínculo, mas sem a
+    permissão — que é o que prova que `require()` está de fato no caminho.
     """
     email = f"pessoa{sufixo_login}+{cenario.sufixo}@grupo.dev"
 
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
+        grupos = [await _grupo_produtos(sessao)] if com_permissao_produtos else []
         usuario = Usuario(
             login=f"user{sufixo_login}-{cenario.sufixo}",
             nome="Pessoa de Teste",
             email=email,
             senha_hash=_HASH_DESCARTAVEL,
-            superusuario=True,
+            grupos=grupos,
         )
         sessao.add(usuario)
         await sessao.commit()

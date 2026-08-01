@@ -21,7 +21,7 @@ import pytest  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncEngine,
     AsyncSession,
@@ -259,11 +259,24 @@ async def sem_vinculo(
 
 @pytest.fixture
 async def permissoes(sessao: AsyncSession) -> list[Permissao]:
-    itens = [
-        Permissao(recurso=recurso, acao=acao, descricao=f"{acao} {recurso}")
-        for recurso, acao in pares_do_catalogo()
-    ]
-    sessao.add_all(itens)
+    """Todo o catálogo, um `Permissao` por par recurso+ação.
+
+    Get-or-create, não `INSERT` cego: `tests/cenario.py` concede `produto:ler`/`criar` a
+    usuários de teste gravando **fora** desta savepoint (motor de runtime, commit direto),
+    então esses dois pares já existem de forma permanente assim que o primeiro teste
+    baseado em `cenario` roda na sessão — um `INSERT` sem checar bateria na
+    `UniqueConstraint` a partir daí.
+    """
+    existentes = {
+        (p.recurso, p.acao): p for p in (await sessao.execute(select(Permissao))).scalars()
+    }
+    itens = []
+    for recurso, acao in pares_do_catalogo():
+        permissao = existentes.get((recurso, acao))
+        if permissao is None:
+            permissao = Permissao(recurso=recurso, acao=acao, descricao=f"{acao} {recurso}")
+            sessao.add(permissao)
+        itens.append(permissao)
     await sessao.flush()
     return itens
 

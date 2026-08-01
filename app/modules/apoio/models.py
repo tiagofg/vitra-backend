@@ -43,6 +43,12 @@ class TabelaApoio(ModeloBase, AtivoMixin):
     `name`, `active`) e que o plano confirmou como o desenho certo: os 19 combos são
     vocabulário do grupo inteiro, não de cada empresa. `empresa_id` não existe mais aqui;
     era o desenho pré-RLS, mantido durante a coexistência dos dois módulos.
+
+    Sem RLS, e é o desenho: mas isso quer dizer que `apoio:editar`/`apoio:excluir`
+    concedido a alguém numa empresa vale para o vocabulário inteiro do grupo — a mesma
+    lacuna que o docstring de `VinculoEmpresa.grupo_id` registra para ação administrativa
+    em geral (RBAC ainda não é por empresa). Aqui o efeito é mais visível: editar "Dourado"
+    na ABACAXI muda o combo que a tela da UVA também usa, porque é a mesma linha.
     """
 
     __tablename__ = "catalog_lookups"

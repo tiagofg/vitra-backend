@@ -90,7 +90,11 @@ class Usuario(ModeloBase, AtivoMixin):
     # invalidava o token que já estava com quem não devia.
     senha_versao: Mapped[int] = mapped_column(default=0, nullable=False)
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Trava de força bruta em `/auth/login` — ver `AuthService.autenticar`.
+    # Trava de força bruta em `/auth/login` — ver `AuthService.autenticar`. Só reseta ao
+    # atingir o limite e a janela expirar, ou no login certo: não há decaimento gradual
+    # (ex.: -1 por hora sem tentativa nova). Um script lento o bastante para nunca bater
+    # nas 5 tentativas nunca aciona `bloqueado_ate`, e por ora não há IP throttle
+    # complementar — aceito por enquanto, registrado para quando um dos dois entrar.
     tentativas_falhas: Mapped[int] = mapped_column(default=0, nullable=False)
     bloqueado_ate: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -289,22 +290,31 @@ async def semear_acesso(
     return admin, criado
 
 
-def _recusar_senha_padrao_em_producao() -> None:
+HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
+
+
+def _recusar_senha_padrao_fora_do_dev_local() -> None:
     """`Config` já recusa o boot da API com `jwt_secret` default em produção — o seed cria
     a conta que possui tudo com uma senha que está no Git (`admin12345`) e só imprime
-    "(troque a senha)", o que não impede nada. Mesma classe de risco, guarda equivalente:
-    recusa rodar em produção sem `VITRA_ADMIN_SENHA` explícita no ambiente."""
-    if config.ambiente != "producao":
-        return
-    if "VITRA_ADMIN_SENHA" not in os.environ:
+    "(troque a senha)", o que não impede nada. Mesma classe de risco, guarda equivalente.
+
+    Duas checagens, cinto e suspensório: `VITRA_AMBIENTE` é fácil de esquecer (o padrão é
+    `"dev"`), e quem roda este script contra um banco remoto por engano não necessariamente
+    setou a variável errada — só apontou `VITRA_DATABASE_URL` para o lugar errado. Comparar
+    o **host** pega esse segundo caso; comparar a URL inteira não serviria — uma senha que
+    por acaso contivesse `@banco-prod` bateria num `in` ingênuo sobre a string crua.
+    """
+    host = make_url(config.database_url).host or ""
+    fora_do_dev_local = config.ambiente == "producao" or host not in HOSTS_LOCAIS
+    if fora_do_dev_local and "VITRA_ADMIN_SENHA" not in os.environ:
         raise SystemExit(
-            "Recusando semear produção sem VITRA_ADMIN_SENHA explícita no ambiente — "
-            "o padrão (admin12345) está no repositório."
+            f"Recusando semear a senha padrão (admin12345) contra o host {host!r} — "
+            "defina VITRA_ADMIN_SENHA explícita no ambiente."
         )
 
 
 async def main() -> None:
-    _recusar_senha_padrao_em_producao()
+    _recusar_senha_padrao_fora_do_dev_local()
     async with SessionLocal() as session:
         permissoes = await sincronizar_permissoes(session)
         ufs = await semear_ufs(session)

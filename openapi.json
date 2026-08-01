@@ -1386,6 +1386,7 @@
           "acesso"
         ],
         "summary": "Definir Permissoes Do Grupo",
+        "description": "`grupo:editar` é, na prática, quase-admin: quem tem essa permissão pode conceder ao\npróprio grupo (ou a qualquer outro) todo o catálogo — inclusive `usuario:*` — sem\npassar pelas travas de escalada que protegem `superusuario` em `UsuarioService`. Não é\na mesma lacuna: aquelas travam *fabricar/promover um superusuário*, esta não trava\n*acumular, via grupo, o mesmo poder efetivo*. É o próximo alvo natural de uma trava\nequivalente, não corrigido agora.",
         "operationId": "definir_permissoes_do_grupo_api_v1_grupos__grupo_id__permissoes_put",
         "security": [
           {
@@ -2440,6 +2441,156 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'usuario:editar'.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'usuario:editar'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'editar' sobre 'usuario'.",
+                        "campos": {
+                          "recurso": "usuario",
+                          "acao": "editar"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{usuario_id}/reativar": {
+      "post": {
+        "tags": [
+          "acesso"
+        ],
+        "summary": "Reativar Usuario",
+        "description": "Sem isto, um usuário desativado por engano — ou pela falta da trava que este mesmo\ncommit corrige — só voltava com `UPDATE` direto no banco. `BaseService.reativar()` já\nexistia; faltava um caminho até ele.",
+        "operationId": "reativar_usuario_api_v1_usuarios__usuario_id__reativar_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "usuario_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Usuario Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsuarioSaida"
+                }
+              }
+            }
           },
           "401": {
             "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
@@ -8647,7 +8798,7 @@
           "produtos"
         ],
         "summary": "Listar Produtos",
-        "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\n`tenant_id` não é parâmetro: a empresa vem do token (ou de `X-Empresa-Id`) e entra na\ntransação, nunca da query string.",
+        "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\n`tenant_id` não é parâmetro: a empresa vem do token (ou de `X-Empresa-Id`) e entra na\ntransação, nunca da query string.\n\n`require(...)` é declarado antes de `SessaoEmpresa`: dependências irmãs são resolvidas\nna ordem do parâmetro, e quem não tem a permissão precisa ver 403 mesmo sem ter\ndeclarado `X-Empresa-Id` — não um 400 que revela que a falta de permissão nem chegou a\nser checada.",
         "operationId": "listar_produtos_api_v1_produtos_get",
         "security": [
           {
@@ -8860,13 +9011,26 @@
             }
           },
           "403": {
-            "description": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "description": "Usuário autenticado sem a permissão 'produto:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:ler'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'ler' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "ler"
+                        }
+                      }
+                    }
+                  },
                   "sem_vinculo_com_empresa": {
                     "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
                     "value": {
@@ -9017,13 +9181,26 @@
             }
           },
           "403": {
-            "description": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "description": "Usuário autenticado sem a permissão 'produto:criar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:criar'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'criar' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "criar"
+                        }
+                      }
+                    }
+                  },
                   "sem_vinculo_com_empresa": {
                     "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
                     "value": {
