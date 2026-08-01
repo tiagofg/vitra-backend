@@ -36,6 +36,12 @@ CATALOGO: dict[str, tuple[Acao, ...]] = {
     "banco": CRUD,
     "uf": (Acao.ler,),
     "produto": CRUD,
+    "cliente": CRUD,
+    "obra": CRUD,
+    "fornecedor": CRUD,
+    "colaborador": CRUD,
+    "profissional_externo": CRUD,
+    "transportadora": CRUD,
 }
 
 

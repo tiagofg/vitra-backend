@@ -8,10 +8,14 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.base_model import ModeloBase
+from app.common.base_model import _ModeloComId
 from app.core.errors import RegraDeNegocio
 
-M = TypeVar("M", bound=ModeloBase)
+# `_ModeloComId`, não `ModeloBase`: toda grade da S1/S2 em diante é por empresa
+# (`ModeloTenant`), que não é subtipo de `ModeloBase` — os dois só compartilham `id` e
+# auditoria em `_ModeloComId`. Quem chama para uma grade por empresa passa `tenant_id`
+# dentro de `fixos`, junto com a FK do pai.
+M = TypeVar("M", bound=_ModeloComId)
 
 
 @dataclass(frozen=True)

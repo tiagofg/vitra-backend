@@ -15,8 +15,9 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-**Estado:** S0, **SB (bake-off)** e **S0.5 (unificação)** estão entregues neste repositório e
-mergeadas em `main` (PR #6, commit `957cde8`) — 137 testes verdes. O bake-off trouxe consigo
+**Estado:** S0, **SB (bake-off)**, **S0.5 (unificação)** e **S1 (cadastros de pessoas)**
+estão entregues neste repositório — S0.5 mergeada em `main` (PR #6, commit `957cde8`) com
+137 testes verdes; S1 soma mais 20, 157 no total. O bake-off trouxe consigo
 uma mudança arquitetural que este plano absorveu por inteiro: **multiempresa deixa de ser
 `empresa_id` filtrado no serviço e passa a ser
 Row-Level Security com chave composta**. A S0.5 fundiu os dois desenhos que coexistiam desde
@@ -170,10 +171,15 @@ empresa — o serviço **não** escreve filtro nenhum) e por rotas somente-GET.
   justamente para poder virar índice funcional quando o volume pedir
 
 **Idioma dos identificadores.** O schema compartilhado do bake-off é fixo e está em inglês
-(`tenants`, `products`, `product_variants`). Como não se pode alterar DDL lá, **nome de tabela e
-de coluna passa a ser em inglês** em todo o projeto — schema bilíngue seria pior que qualquer
-uma das duas opções. Classe ORM, serviço, rota e mensagem de erro **continuam em português**:
-é a língua do domínio e da equipe, e o mapeamento explícito do SQLAlchemy absorve a diferença
+(`tenants`, `products`, `product_variants`) — não se pode alterar DDL lá, e essas 7 tabelas
+continuam em inglês. **Revisto na S1:** a regra original estendia inglês a todo nome de
+tabela e coluna do projeto, mas a S0/S0.5 já não seguia isso nas tabelas próprias
+(`filial`, `centro_custo`, `cidade`, `banco`, `grupo` — todas em português), e a razão que
+justificava inglês (schema compartilhado imutável) não existe para tabela nova. A partir da
+S1, tabela e coluna que nascem neste projeto são em **português**; só as 7 herdadas do
+bake-off continuam em inglês, porque mudar o DDL delas não paga. Classe ORM, serviço, rota e
+mensagem de erro **sempre em português**: é a língua do domínio e da equipe, e o mapeamento
+explícito do SQLAlchemy absorve a diferença onde ela existir
 (`class Produto(...): __tablename__ = "products"`).
 
 ## Multiempresa por RLS — o mecanismo
@@ -795,9 +801,67 @@ verdade — trocado por um grupo com permissão real, mais um teste negativo e a
 ordem 400×403 que a ausência desse teste tinha deixado passar despercebida. `scripts/seed.py`
 ganhou a mesma trava por host que o seed do bake-off já tinha (não só por `VITRA_AMBIENTE`).
 
-**S1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
-`fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa
-mixins de S0; cada um é ~1 modelo + schemas + service herdando `BaseService`.
+**S1 — Cadastros de pessoas.** ✅ *Entregue.* Cliente (com `obra`), fornecedor (com
+`fornecedor_empresa` histórico), colaborador, profissional externo, transportadora — as sete
+tabelas por empresa, PK composta, RLS com as quatro políticas, mesma forma da migração do
+bake-off. Todos reusam os mixins de endereço/contatos/redes sociais de S0.
+
+Duas peças transversais entraram junto, porque S1 é a primeira fase a precisar delas:
+
+- **`app/common/crud_router.py`.** `empresa/router.py` e `apoio/router.py` escrevem à mão
+  seis rotas quase idênticas por recurso; S1 sozinha traria seis recursos novos, então a
+  fábrica nasce aqui e monta as seis (listar, lookup, criar, obter, atualizar, desativar) a
+  partir do service e dos schemas. Preserva a ordem `require(...)` antes de `SessaoEmpresa`
+  que `produtos/router.py` já tinha e que faz "sem permissão e sem empresa" responder `403`
+  antes de `400`. `empresa/router.py`/`apoio/router.py` **não** foram migrados para a
+  fábrica — provar o padrão nos recursos novos primeiro, migrar o legado depois (S6).
+  Detalhe de execução: o arquivo **não** usa `from __future__ import annotations` — as rotas
+  são funções construídas em tempo de execução com a anotação vindo de parâmetro capturado
+  por clausura (`dados: criar`), e o future import transformaria isso em string que o
+  FastAPI não consegue resolver. O mypy também não consegue verificar esses pontos
+  estaticamente (`# type: ignore[valid-type]`, documentado no próprio arquivo).
+- **`app/common/child_set.py`.** O bound do `TypeVar` de `substituir_conjunto` era
+  `ModeloBase` (tabela global); toda grade da S1 em diante é por empresa (`ModeloTenant`),
+  que não é subtipo de `ModeloBase` — os dois só compartilham `id`/auditoria em
+  `_ModeloComId`. Trocado o bound; S1 não tem nenhuma grade própria para exercitar isso de
+  verdade (fica para as grades de produto da S2).
+
+Decisões tomadas durante a execução:
+
+- **Nome físico de tabela em português** (`cliente`, `obra`, `fornecedor`…), não inglês. A
+  regra "inglês em todo o projeto" do plano original valia pela razão específica de que o
+  DDL do bake-off era fixo — razão que não existe para tabela nova. Corrigido também no
+  README ("Convenções que valem para todas as fases").
+- **`fornecedor_empresa`** é histórico com vigência: `POST
+  /fornecedores/{id}/empresas-compradoras` abre uma vigência e fecha a anterior (seta
+  `vigencia_fim = nova_vigencia_inicio - 1 dia`) na mesma transação. Um índice único parcial
+  (`UNIQUE (tenant_id, fornecedor_id) WHERE vigencia_fim IS NULL`) impede duas vigências
+  abertas ao mesmo tempo — a regra que a tela pressupõe e que nenhuma checagem de serviço
+  garantiria sozinha.
+- **`colaborador` é tabela própria, separada de `employee_company`.** A identidade
+  (`Usuario`/`employees`) é global desde a S0.5; os dados de RH que a tela `Colaborador`
+  pede (cargo, setor, admissão, vínculo, grau de instrução) são por empresa. Penduraram-se
+  em `colaborador`, não em `employee_company`: aquela tabela é o caminho quente, lido em
+  todo request por `tem_vinculo()` (e, a partir da S2, por `require()`) — misturar cadastro
+  de RH nela tornaria uma linha fina de acesso numa linha larga.
+- **FK para `catalog_lookups` não garante o domínio sozinha.** `profissao_id`, `cargo_id` e
+  companhia são `Uuid → catalog_lookups.id` — a FK simples aceita qualquer linha da tabela,
+  de qualquer domínio. Os serviços de `Cliente`, `ProfissionalExterno` e `Colaborador`
+  conferem o domínio esperado em `_antes_de_criar`/`_antes_de_atualizar`
+  (`app/modules/pessoas/service.py::_conferir_dominio`), com `422 dominio_invalido` quando
+  não bate.
+- **Achado durante os testes — literal fixo em dado commitado por `cenario` colide.**
+  `tests/cenario.py` já documentava a razão (sufixo único por execução) para as próprias
+  fixtures; os testes novos de RLS de `Cliente`/`Fornecedor` reproduziram o mesmo problema
+  ao gravar `codigo="CLI001"` com `commit()` direto (fora do savepoint por-teste) — outro
+  teste, rodando pela mesma conexão de dono (que ignora RLS), viu a linha e reprovou por
+  "código já utilizado" mesmo em tenant diferente. Corrigido usando `cenario.sufixo` no
+  código, como o resto do arquivo já fazia.
+
+**S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
+especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor. O
+esqueleto (`Produto`/`Variante`/`ProdutoEmpresa`, herdado do bake-off) já existe em
+`app/modules/produtos/` — falta enriquecer, não criar do zero.
 
 **S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
 especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor. O

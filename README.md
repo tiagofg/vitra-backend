@@ -3,7 +3,8 @@
 Substituto do SoftLux 1.0.2.1521 para a Vertz. Python 3.12 + FastAPI + SQLAlchemy 2.0 async
 sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md).
 
-**Estado: S0 (Fundação) e SB (Bake-off) entregues.** As demais fases estão no plano.
+**Estado: S0 (Fundação), SB (Bake-off), S0.5 (Unificação) e S1 (Cadastros de pessoas)
+entregues.** As demais fases estão no plano.
 As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bakeoff.md).
 
 ## O que a S0 entrega
@@ -42,6 +43,27 @@ tabelas moram onde o assunto delas mora (`products`/`product_variants`/`product_
 `produtos`, `tenants` em `empresa`, `employees`/`employee_company` em `auth`,
 `catalog_lookups` em `apoio`). Os testes mantêm o nome `test_bakeoff_*` porque continuam
 provando os entregáveis do bake-off.
+
+## O que a S1 entrega
+
+| Bloco | Onde |
+|---|---|
+| Cliente (com `obra`, subrecurso), fornecedor (com histórico de empresa compradora), colaborador, profissional externo, transportadora | `app/modules/pessoas/` |
+| Fábrica de router CRUD — as seis rotas repetidas (listar, lookup, criar, obter, atualizar, desativar) por recurso | `app/common/crud_router.py` |
+| Migração das 7 tabelas + RLS (mesma forma da migração do bake-off) | `alembic/versions/af281e86c3d5_pessoas_*.py` |
+| `Cpf`/`CpfCnpj` — mesma normalização de `Cnpj`, para PF | `app/common/schemas.py` |
+
+Todas por empresa (`ModeloTenant`, PK composta), com nome físico de tabela em
+**português** — `cliente`, `obra`, `fornecedor`, `colaborador` — ao contrário das 7 tabelas
+herdadas do bake-off, cujo DDL compartilhado era fixo. Ver "Convenções que valem para todas
+as fases" abaixo.
+
+`fornecedor_empresa` é histórico com vigência, não coluna: `POST
+/fornecedores/{id}/empresas-compradoras` abre uma vigência e fecha a anterior na mesma
+transação; um índice único parcial (`WHERE vigencia_fim IS NULL`) impede duas vigências
+abertas ao mesmo tempo. FKs para `catalog_lookups` (`profissao_id`, `cargo_id`, …) são
+conferidas contra o domínio esperado em `_antes_de_criar`/`_antes_de_atualizar` — a FK do
+banco garante só que o `id` existe em `catalog_lookups`, não que é do domínio certo.
 
 ## Multiempresa: quem recorta é o banco
 
@@ -200,14 +222,19 @@ partir das migrações.
 - **Tabela por empresa tem PK composta `(tenant_id, id)`**, e toda FK entre tabelas por
   empresa carrega o `tenant_id` junto. É o que torna *fisicamente impossível* ligar o preço
   da empresa A ao produto da empresa B — o `INSERT` falha, não é validação de serviço.
-- **Nome de tabela e de coluna em inglês** (o schema compartilhado é fixo e é assim); classe
-  ORM, serviço, rota e mensagem de erro **em português**, que é a língua do domínio.
+- **Nome de tabela e de coluna em português** para o que nasce neste projeto (`cliente`,
+  `filial`, `centro_custo`…). As 7 tabelas herdadas do bake-off (`products`,
+  `product_variants`, `product_tenant`, `tenants`, `employees`, `employee_company`,
+  `catalog_lookups`) continuam em inglês — o DDL do banco compartilhado do Neon era fixo
+  quando elas nasceram, e reescrevê-lo não paga. Classe ORM, serviço, rota e mensagem de
+  erro **sempre em português**, que é a língua do domínio.
 - **Dinheiro é `BIGINT` em centavos** (`price_cents`): R$ 12,34 é `1234`. Nunca float, nunca
-  `Numeric`. Converter para reais é da borda que apresenta, nunca do banco.
-  *(As tabelas da S0 ainda usam `Numeric(15,2)`; a conversão está no retrabalho pendente.)*
+  `Numeric`. Converter para reais é da borda que apresenta, nunca do banco. Nenhuma tabela
+  guarda dinheiro em `Numeric` desde a S0.5.
 - **Quantidade** `Numeric(14,3)` com `CHECK >= 0`; **percentual** `Numeric(9,4)`.
 - **CNPJ/CPF** `varchar(14)`, caixa alta e **sem máscara** — já pronto para o CNPJ
-  alfanumérico, que vale a partir de 31/07/2026.
+  alfanumérico, que vale a partir de 31/07/2026. `Cnpj`/`Cpf`/`CpfCnpj`
+  (`app/common/schemas.py`) tiram a máscara e sobem a caixa na borda.
 - **Cadastro não se apaga** — `DELETE /recurso/{id}` desativa (`ativo = false`). Documentos de
   venda vão **cancelar** (`POST /{id}/cancelar`), a partir da S4.
 - **Erro sai sempre no mesmo envelope**: `{"erro": {"codigo", "mensagem", "campos"}}` —
