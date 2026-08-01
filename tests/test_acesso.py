@@ -98,8 +98,8 @@ async def test_usuario_criado_pela_api_consegue_logar(
         json={
             "login": "comprador",
             "nome": "Comprador",
+            "email": "comprador@vertz.teste",
             "senha": "senha-do-comprador-1",
-            "empresa_id": str(empresa.id),
             "grupo_ids": [grupo.json()["id"]],
         },
         headers=cabecalho_admin,
@@ -128,7 +128,12 @@ async def test_login_duplicado_e_conflito(
 ) -> None:
     resposta = await cliente.post(
         "/api/v1/usuarios",
-        json={"login": admin.login, "nome": "Outro", "senha": "uma-senha-qualquer-1"},
+        json={
+            "login": admin.login,
+            "nome": "Outro",
+            "email": "outro@vertz.teste",
+            "senha": "uma-senha-qualquer-1",
+        },
         headers=cabecalho_admin,
     )
     assert resposta.status_code == 409
@@ -139,7 +144,12 @@ async def test_admin_redefine_senha_de_outro_usuario(
 ) -> None:
     criado = await cliente.post(
         "/api/v1/usuarios",
-        json={"login": "comprador", "nome": "Comprador", "senha": "senha-antiga-123"},
+        json={
+            "login": "comprador",
+            "nome": "Comprador",
+            "email": "comprador@vertz.teste",
+            "senha": "senha-antiga-123",
+        },
         headers=cabecalho_admin,
     )
     usuario_id = criado.json()["id"]
@@ -167,7 +177,12 @@ async def test_usuario_desativado_perde_o_acesso(
 ) -> None:
     criado = await cliente.post(
         "/api/v1/usuarios",
-        json={"login": "comprador", "nome": "Comprador", "senha": "senha-do-comprador-1"},
+        json={
+            "login": "comprador",
+            "nome": "Comprador",
+            "email": "comprador@vertz.teste",
+            "senha": "senha-do-comprador-1",
+        },
         headers=cabecalho_admin,
     )
     cabecalho = await autenticar(cliente, "comprador", "senha-do-comprador-1")

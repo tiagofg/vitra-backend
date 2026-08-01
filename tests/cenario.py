@@ -1,4 +1,4 @@
-"""Cenário de dados do bake-off, montado por teste.
+"""Cenário de dados para os testes de multiempresa (ex-bake-off).
 
 Duas regras que a qualidade do VITRA exige e que valem repetir porque explicam o formato:
 
@@ -8,6 +8,12 @@ Duas regras que a qualidade do VITRA exige e que valem repetir porque explicam o
 * **Provar o caso positivo antes do negativo.** Um teste que só afirma "não veio nada da
   empresa B" passa igualzinho contra uma fixture vazia. Por isso todo cenário devolve
   também o que *tem* que aparecer, e os testes conferem os dois lados.
+
+Desde a unificação (S0.5), `Usuario` **é** a identidade de quem trabalha — não há mais uma
+segunda tabela `employees` ligada por e-mail. `VinculoEmpresa` liga `Usuario.id` direto a
+`tenant_id`, então montar um cenário fica mais simples: não existe mais o caso "usuário sem
+e-mail não alcança empresa nenhuma" — todo `Usuario` tem e-mail (é NOT NULL agora), e quem
+não tem vínculo simplesmente não tem linha em `VinculoEmpresa`.
 """
 
 from __future__ import annotations
@@ -21,22 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.security import criar_token, gerar_hash_senha
 from app.core.tenancy import GUC_EMPRESA, declarar_empresa
-from app.modules.auth.models import Usuario
-from app.modules.bakeoff.models import (
-    Colaborador,
-    ColaboradorEmpresa,
-    Empresa,
-    PapelEmpresa,
-    Produto,
-    ProdutoEmpresa,
-    Variante,
-)
+from app.modules.auth.models import Usuario, VinculoEmpresa
+from app.modules.empresa.models import Empresa
+from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
 
 # Lê `GUC_EMPRESA` em vez de repetir a string. Não é a linha duplicada que custa: com o
 # nome literal aqui, renomear o GUC deixaria `test_guc_vazio_nao_estoura_o_cast` **verde**
-# — ele passaria a setar um GUC que ninguém lê, o SELECT voltaria vazio de qualquer forma
-# e o `assert linhas == []` seria satisfeito por acidente. O teste que existe para provar o
-# NULLIF pararia de provar qualquer coisa, sem nenhum sinal.
+# por acidente — ele passaria a setar um GUC que ninguém lê, e o `assert linhas == []`
+# seria satisfeito sem provar mais nada sobre o NULLIF.
 SQL_DECLARAR = text(f"SELECT set_config('{GUC_EMPRESA}', :empresa, true)")
 
 # Calculado uma vez: o argon2 é lento de propósito, e nenhum teste daqui faz login — os
@@ -46,7 +44,7 @@ _HASH_DESCARTAVEL = gerar_hash_senha("senha-de-teste-123")
 
 @dataclass(frozen=True)
 class UsuarioDeTeste:
-    """Quem loga, o token dele e o e-mail que liga `usuario` a `employees`."""
+    """Quem loga e o token dele."""
 
     id: uuid.UUID
     token: str
@@ -76,8 +74,8 @@ async def montar_cenario(motor: AsyncEngine) -> Cenario:
     codigo_uva = f"UVA-{sufixo}"
 
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
-        abacaxi = Empresa(name=f"ABACAXI {sufixo}", cnpj=f"11{sufixo.upper()}0001", active=True)
-        uva = Empresa(name=f"UVA {sufixo}", cnpj=f"22{sufixo.upper()}0001", active=True)
+        abacaxi = Empresa(codigo=f"ABACAXI-{sufixo}", razao_social=f"ABACAXI {sufixo}", cnpj=None)
+        uva = Empresa(codigo=f"UVA-{sufixo}", razao_social=f"UVA {sufixo}", cnpj=None)
         sessao.add_all([abacaxi, uva])
         await sessao.commit()
 
@@ -108,23 +106,23 @@ async def _catalogo_da_empresa(
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, empresa_id)
 
-        produto = Produto(tenant_id=empresa_id, code=codigo, description=descricao, active=True)
+        produto = Produto(tenant_id=empresa_id, codigo=codigo, descricao=descricao, ativo=True)
         sessao.add(produto)
         await sessao.flush()
 
         com_preco = Variante(
             tenant_id=empresa_id,
-            product_id=produto.id,
-            finish="cobre",
-            size="P",
-            active=True,
+            produto_id=produto.id,
+            acabamento="cobre",
+            tamanho="P",
+            ativo=True,
         )
         sem_preco = Variante(
             tenant_id=empresa_id,
-            product_id=produto.id,
-            finish="cobre",
-            size="G",
-            active=True,
+            produto_id=produto.id,
+            acabamento="cobre",
+            tamanho="G",
+            ativo=True,
         )
         sessao.add_all([com_preco, sem_preco])
         await sessao.flush()
@@ -132,10 +130,10 @@ async def _catalogo_da_empresa(
         sessao.add(
             ProdutoEmpresa(
                 tenant_id=empresa_id,
-                variant_id=com_preco.id,
-                price_cents=189_90,
-                stock_qty=Decimal("12.000"),
-                min_stock=Decimal("2.000"),
+                variante_id=com_preco.id,
+                preco_cents=189_90,
+                estoque=Decimal("12.000"),
+                estoque_minimo=Decimal("2.000"),
             )
         )
         await sessao.commit()
@@ -149,21 +147,11 @@ async def criar_usuario_vinculado(
     empresas: tuple[uuid.UUID, ...],
     sufixo_login: str = "",
 ) -> UsuarioDeTeste:
-    """Cria quem loga (`usuario`), quem trabalha (`employees`) e o vínculo entre eles.
+    """Cria quem loga e o vínculo dele com cada empresa em `empresas`.
 
-    São duas tabelas para a mesma pessoa: o schema fixo do bake-off tem
-    `employees(id, name, email, active)`, sem senha, e a S0 guarda credencial em `usuario`.
-    A ponte é o e-mail — o mesmo caminho que `_tem_vinculo` percorre em produção.
-
-    `empresas` é a lista de onde a pessoa tem vínculo. Passar uma só é o que permite testar
-    o 403: autenticado, mas pedindo a empresa do vizinho.
-
-    Devolve id, token **e e-mail**: o e-mail é a ponte que a autorização percorre, então
-    o teste que desativa o colaborador precisa dele para achar a linha. Derivá-lo de novo
-    no teste duplicaria o padrão de formatação — e duplicata de padrão apodrece.
-
-    O token é emitido direto em vez de passar pelo login: a suíte não está testando
-    autenticação aqui, e o argon2 custa caro por teste.
+    Passar uma empresa só é o que permite testar o 403: autenticado, mas pedindo a empresa
+    do vizinho. O token é emitido direto em vez de passar pelo login: a suíte não está
+    testando autenticação aqui, e o argon2 custa caro por teste.
     """
     email = f"pessoa{sufixo_login}+{cenario.sufixo}@grupo.dev"
 
@@ -175,37 +163,28 @@ async def criar_usuario_vinculado(
             senha_hash=_HASH_DESCARTAVEL,
         )
         sessao.add(usuario)
-
-        pessoa = Colaborador(name="Pessoa de Teste", email=email, active=True)
-        sessao.add(pessoa)
         await sessao.commit()
 
+    # Um `flush()` por empresa: inserir os vínculos de duas empresas na mesma sessão sem
+    # dar `flush()` entre elas faria o SQLAlchemy juntar os dois INSERTs num único
+    # `executemany`, que sairia inteiro sob o `SET LOCAL` da última empresa declarada —
+    # exatamente o tipo de furo silencioso que este cenário existe para não ter.
     for empresa_id in empresas:
         async with AsyncSession(motor, expire_on_commit=False) as sessao:
             await declarar_empresa(sessao, empresa_id)
-            sessao.add(
-                ColaboradorEmpresa(
-                    tenant_id=empresa_id,
-                    employee_id=pessoa.id,
-                    role=PapelEmpresa.operator_full.value,
-                )
-            )
+            sessao.add(VinculoEmpresa(tenant_id=empresa_id, employee_id=usuario.id))
             await sessao.commit()
 
     return UsuarioDeTeste(id=usuario.id, token=criar_token(usuario.id), email=email)
 
 
-async def criar_usuario_sem_email(motor: AsyncEngine, cenario: Cenario) -> str:
-    """Usuário que loga mas não tem como ser ligado a `employees`.
-
-    `Usuario.email` é nulável na S0, então este caso existe de verdade. A alternativa a
-    negar — tratar a ausência como "não dá para checar, então deixa passar" — seria o mesmo
-    furo com outra cara. Devolve o token.
-    """
+async def criar_usuario_sem_vinculo(motor: AsyncEngine, cenario: Cenario) -> str:
+    """Usuário que loga mas não tem vínculo com nenhuma empresa. Devolve o token."""
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
         usuario = Usuario(
-            login=f"sem-email-{cenario.sufixo}",
-            nome="Sem e-mail",
+            login=f"sem-vinculo-{cenario.sufixo}",
+            nome="Sem Vínculo",
+            email=f"sem-vinculo+{cenario.sufixo}@grupo.dev",
             senha_hash=_HASH_DESCARTAVEL,
         )
         sessao.add(usuario)
@@ -213,28 +192,30 @@ async def criar_usuario_sem_email(motor: AsyncEngine, cenario: Cenario) -> str:
     return criar_token(usuario.id)
 
 
-async def criar_colaborador_nos_dois(
+async def criar_pessoa_nas_duas(
     motor: AsyncEngine, cenario: Cenario, nome: str = "ANA SILVA"
 ) -> uuid.UUID:
-    """Mesma identidade global, papel diferente em cada empresa.
+    """Mesma identidade global, vínculo em ambas as empresas.
 
-    É o caso da ANA SILVA no enunciado do bake-off: `admin` na ABACAXI e `operator-sales`
-    na UVA. Prova que o papel não pode ser coluna de `employees`.
+    É o caso da ANA SILVA do bake-off: uma pessoa, dois vínculos. Antes da unificação isso
+    provava que o papel não podia ser coluna de `employees`; hoje prova o mesmo sobre
+    `VinculoEmpresa.grupo_id` — o vínculo, não a identidade, é o que muda por empresa.
     """
+    email = f"ana+{cenario.sufixo}@grupo.dev"
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
-        pessoa = Colaborador(name=nome, email=f"ana+{cenario.sufixo}@grupo.dev", active=True)
+        pessoa = Usuario(
+            login=f"ana-{cenario.sufixo}",
+            nome=nome,
+            email=email,
+            senha_hash=_HASH_DESCARTAVEL,
+        )
         sessao.add(pessoa)
         await sessao.commit()
 
-    for empresa_id, papel in (
-        (cenario.abacaxi, PapelEmpresa.admin),
-        (cenario.uva, PapelEmpresa.operator_sales),
-    ):
+    for empresa_id in (cenario.abacaxi, cenario.uva):
         async with AsyncSession(motor, expire_on_commit=False) as sessao:
             await declarar_empresa(sessao, empresa_id)
-            sessao.add(
-                ColaboradorEmpresa(tenant_id=empresa_id, employee_id=pessoa.id, role=papel.value)
-            )
+            sessao.add(VinculoEmpresa(tenant_id=empresa_id, employee_id=pessoa.id))
             await sessao.commit()
 
     return pessoa.id

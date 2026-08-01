@@ -16,7 +16,8 @@ from app.core.security import (
     precisa_reidratar_hash,
     verificar_senha,
 )
-from app.modules.auth.models import Grupo, Permissao, Usuario
+from app.core.tenancy import SemVinculoComEmpresa, declarar_empresa
+from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa
 from app.modules.auth.schemas import (
     GrupoAtualizar,
     GrupoCriar,
@@ -24,6 +25,29 @@ from app.modules.auth.schemas import (
     UsuarioAtualizar,
     UsuarioCriar,
 )
+
+
+async def tem_vinculo(session: AsyncSession, employee_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
+    """A pessoa tem vínculo ativo com aquela empresa?
+
+    Antes da unificação (S0.5) isto exigia ligar `usuario` a `employees` pelo e-mail — a
+    ponte que `app/modules/bakeoff/deps.py` percorria. Com as duas tabelas fundidas,
+    `VinculoEmpresa.employee_id` já é a FK direta para `Usuario.id`, e a consulta abaixo
+    sai recortada pela política de RLS (a empresa já foi declarada nesta transação quando
+    isto é chamado a partir de `empresa_do_pedido`).
+    """
+    # `Empresa` importado dentro da função: `app.modules.empresa.models` não pode ser
+    # importado no topo sem risco de ciclo (empresa/service.py também pode vir a importar
+    # coisas de auth no futuro). A checagem em si é local ao request, então o custo é zero.
+    from app.modules.empresa.models import Empresa
+
+    linha = await session.execute(
+        select(VinculoEmpresa.tenant_id)
+        .join(Empresa, Empresa.id == VinculoEmpresa.tenant_id)
+        .where(VinculoEmpresa.employee_id == employee_id, Empresa.ativo.is_(True))
+        .limit(1)
+    )
+    return linha.scalar_one_or_none() is not None
 
 
 class AuthService:
@@ -46,10 +70,10 @@ class AuthService:
             await self.session.flush()
         return usuario
 
-    def emitir_tokens(self, usuario: Usuario) -> TokenSaida:
+    def emitir_tokens(self, usuario: Usuario, *, tenant_id: uuid.UUID | None = None) -> TokenSaida:
         return TokenSaida(
-            access_token=criar_token(usuario.id, "access"),
-            refresh_token=criar_token(usuario.id, "refresh"),
+            access_token=criar_token(usuario.id, "access", tenant_id=tenant_id),
+            refresh_token=criar_token(usuario.id, "refresh", tenant_id=tenant_id),
         )
 
     async def renovar(self, refresh_token: str) -> TokenSaida:
@@ -66,6 +90,18 @@ class AuthService:
             raise RegraDeNegocio("A senha nova precisa ser diferente da atual.")
         usuario.senha_hash = gerar_hash_senha(senha_nova)
         await self.session.flush()
+
+    async def trocar_empresa(self, usuario: Usuario, empresa_id: uuid.UUID) -> TokenSaida:
+        """Reemite o token já com a empresa como claim.
+
+        A checagem de vínculo aqui é a mesma que `empresa_do_pedido` faz na borda — ver
+        `tem_vinculo` — mas a empresa ainda não foi declarada na transação corrente, então
+        ela entra explicitamente na consulta em vez de depender do RLS para recortar.
+        """
+        await declarar_empresa(self.session, empresa_id)
+        if not await tem_vinculo(self.session, usuario.id, empresa_id):
+            raise SemVinculoComEmpresa(empresa_id)
+        return self.emitir_tokens(usuario, tenant_id=empresa_id)
 
 
 class GrupoService(BaseService[Grupo, GrupoCriar, GrupoAtualizar]):
@@ -117,7 +153,6 @@ class UsuarioService(BaseService[Usuario, UsuarioCriar, UsuarioAtualizar]):
         campo_codigo="login",
         campos_ordenacao=("login", "nome", "criado_em"),
         ordenacao_padrao="login",
-        tem_empresa=True,
     )
 
     async def criar(self, dados: UsuarioCriar) -> Usuario:

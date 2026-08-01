@@ -12,20 +12,21 @@ from app.core.errors import registrar_handlers
 from app.core.openapi import documentar_erros
 from app.modules.apoio.router import routers as routers_apoio
 from app.modules.auth.router import routers as routers_auth
-from app.modules.bakeoff.router import routers as routers_bakeoff
 from app.modules.empresa.router import routers as routers_empresa
+from app.modules.produtos.router import routers as routers_produtos
 
 DESCRICAO = """
 Backend do VITRA — núcleo comercial, substituto do SoftLux.
 
-**S0 — Fundação:** autenticação JWT, RBAC granular recurso+ação, empresa/filial/centro de custo
-e a tabela de apoio genérica que cobre os 19 combos das telas do legado.
+Autenticação JWT, RBAC granular recurso+ação, cadastros (empresa/filial/centro de custo,
+produtos) e a tabela de apoio genérica que cobre os 19 combos das telas do legado.
 
-**SB — Bake-off:** as 7 tabelas do schema compartilhado, com chave primária composta
-`(tenant_id, id)` e multiempresa imposta por Row-Level Security. As rotas marcadas
-`bake-off` exigem o cabeçalho **`X-Empresa-Id`**: a empresa ativa entra na transação
-(`SET LOCAL app.current_tenant`), nunca na query string. Sem o cabeçalho a resposta é
-`400`; com a empresa errada, a listagem simplesmente não enxerga o dado da outra.
+**Multiempresa por Row-Level Security.** Toda tabela por empresa tem chave primária
+composta `(tenant_id, id)` e é recortada pelo Postgres, não pelo serviço. A empresa ativa
+entra na transação a partir de um claim no token (`POST /auth/trocar-empresa`) ou do
+cabeçalho **`X-Empresa-Id`**, que tem prioridade quando presente — é o caminho de quem tem
+vínculo em mais de uma empresa. Sem nenhuma das duas a resposta é `400`; com a empresa
+errada, a listagem simplesmente não enxerga o dado da outra.
 """
 
 
@@ -57,7 +58,7 @@ def criar_app() -> FastAPI:
     registrar_handlers(app)
 
     api = APIRouter(prefix=config.api_prefix)
-    for router in [*routers_auth, *routers_empresa, *routers_apoio, *routers_bakeoff]:
+    for router in [*routers_auth, *routers_empresa, *routers_apoio, *routers_produtos]:
         api.include_router(router)
     app.include_router(api)
 

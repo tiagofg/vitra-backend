@@ -14,7 +14,7 @@ import asyncio
 
 from httpx import AsyncClient
 
-from tests.bakeoff import Cenario
+from tests.cenario import Cenario
 
 
 async def test_pedidos_simultaneos_de_empresas_diferentes_nao_se_misturam(

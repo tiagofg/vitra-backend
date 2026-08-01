@@ -67,7 +67,6 @@ class FilialService(BaseService[Filial, FilialCriar, FilialAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "nome", "criado_em"),
         ordenacao_padrao="codigo",
-        tem_empresa=True,
     )
 
 
@@ -79,7 +78,6 @@ class CentroCustoService(BaseService[CentroCusto, CentroCustoCriar, CentroCustoA
         campo_codigo="codigo",
         campos_ordenacao=("codigo", "nome", "criado_em"),
         ordenacao_padrao="codigo",
-        tem_empresa=True,
     )
 
     async def _antes_de_atualizar(self, obj: CentroCusto, valores: dict[str, Any]) -> None:

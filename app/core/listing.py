@@ -42,7 +42,6 @@ class ListParams:
         ordenar_por: str | None = Query(None),
         ordem: Literal["asc", "desc"] = Query("asc"),
         ativo: bool | None = Query(None, description="Nulo = todos"),
-        empresa_id: uuid.UUID | None = Query(None),
     ) -> None:
         self.busca = busca.strip() if busca else None
         self.busca_codigo = busca_codigo.strip() if busca_codigo else None
@@ -51,7 +50,6 @@ class ListParams:
         self.ordenar_por = ordenar_por
         self.ordem = ordem
         self.ativo = ativo
-        self.empresa_id = empresa_id
 
     @property
     def offset(self) -> int:
@@ -79,13 +77,6 @@ class ListingSpec:
     campos_ordenacao: tuple[str, ...] = field(default_factory=tuple)
     ordenacao_padrao: str = "criado_em"
     tem_ativo: bool = True
-    # O schema compartilhado do bake-off é fixo e está em inglês: lá a coluna é `active`.
-    # Um nome por spec resolve sem obrigar o resto do projeto a virar bilíngue.
-    campo_ativo: str = "ativo"
-    # Desenho anterior ao RLS, mantido para as tabelas da S0 que ainda filtram empresa no
-    # serviço. Tabela sob RLS deixa isto em `False`: quem recorta é o banco, e aceitar
-    # `empresa_id` na query string reabriria por fora a porta que a política fecha.
-    tem_empresa: bool = False
 
 
 class Pagina(BaseModel, Generic[T]):
@@ -114,10 +105,7 @@ def aplicar_listagem(stmt: Select[Any], params: ListParams, spec: ListingSpec) -
         stmt = stmt.where(getattr(model, spec.campo_codigo) == params.busca_codigo)
 
     if params.ativo is not None and spec.tem_ativo:
-        stmt = stmt.where(getattr(model, spec.campo_ativo).is_(params.ativo))
-
-    if params.empresa_id is not None and spec.tem_empresa:
-        stmt = stmt.where(model.empresa_id == params.empresa_id)
+        stmt = stmt.where(model.ativo.is_(params.ativo))
 
     campo_ordem = params.ordenar_por or spec.ordenacao_padrao
     permitidos = spec.campos_ordenacao or (spec.ordenacao_padrao,)

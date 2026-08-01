@@ -24,16 +24,15 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.modules.bakeoff.models import Colaborador, Empresa
-from tests.bakeoff import Cenario
+from app.modules.auth.models import Usuario
+from app.modules.empresa.models import Empresa
+from tests.cenario import Cenario
 
-# As quatro rotas do módulo. Antes desta correção eram as únicas 4 operações sem
-# `security` num contrato de 55 — fora as três que são públicas por natureza.
+# As rotas por empresa do módulo de produtos. Antes da unificação eram as únicas do
+# contrato sem `security` — fora as que são públicas por natureza.
 ROTAS = [
     ("GET", "/api/v1/produtos"),
     ("POST", "/api/v1/produtos"),
-    ("GET", "/api/v1/bakeoff/empresas"),
-    ("GET", "/api/v1/bakeoff/empresas/papeis"),
 ]
 
 PUBLICAS_POR_NATUREZA = {
@@ -52,8 +51,8 @@ PUBLICAS_POR_NATUREZA = {
 async def test_rota_sem_token_responde_401(
     cliente_bakeoff: AsyncClient, cenario: Cenario, metodo: str, rota: str
 ) -> None:
-    """`POST /produtos` gravava no banco sem token; `GET /bakeoff/empresas` listava o CNPJ
-    de todas as empresas do grupo."""
+    """`POST /produtos` gravava no banco sem token, e `GET /produtos` listava o catálogo
+    inteiro de qualquer empresa para quem soubesse o `X-Empresa-Id`."""
     resposta = await cliente_bakeoff.request(
         metodo,
         rota,
@@ -147,15 +146,15 @@ async def test_empresa_inexistente_responde_403(autenticado: AsyncClient) -> Non
     assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
 
 
-async def test_usuario_sem_email_nao_alcanca_nenhuma_empresa(
-    sem_email: AsyncClient, cenario: Cenario
+async def test_usuario_sem_vinculo_nao_alcanca_nenhuma_empresa(
+    sem_vinculo: AsyncClient, cenario: Cenario
 ) -> None:
-    """A ponte `usuario` → `employees` é o e-mail, e `Usuario.email` é nulável na S0.
+    """Autenticado, mas sem nenhuma linha em `employee_company`.
 
-    Falha fechado de propósito: tratar a ausência como "não dá para checar, então deixa
-    passar" seria o mesmo furo com outra cara.
+    Falha fechado: não ter vínculo é tratado como não poder acessar, nunca como "não dá
+    para checar, então deixa passar".
     """
-    resposta = await sem_email.get(
+    resposta = await sem_vinculo.get(
         "/api/v1/produtos", headers={"X-Empresa-Id": str(cenario.abacaxi)}
     )
 
@@ -165,22 +164,24 @@ async def test_usuario_sem_email_nao_alcanca_nenhuma_empresa(
 # --- desativação corta o acesso -----------------------------------------------
 
 
-async def test_colaborador_desativado_perde_o_acesso(
+async def test_usuario_desativado_perde_o_acesso(
     autenticado: AsyncClient, motor_runtime: AsyncEngine, cenario: Cenario, email_do_token: str
 ) -> None:
     """Desativar é *o* mecanismo de offboarding do VITRA — precisa cortar o acesso.
 
-    Positivo primeiro: com a pessoa ativa, a listagem responde. Sem essa metade, o 403
-    abaixo passaria mesmo se a rota estivesse quebrada por outro motivo.
+    Desde a unificação (S0.5), `Usuario` é a mesma linha que antes se chamava `employees`:
+    desativá-la corta o **login inteiro**, não só o vínculo com uma empresa — por isso
+    401, e não mais 403. Positivo primeiro: com a pessoa ativa, a listagem responde. Sem
+    essa metade, o 401 abaixo passaria mesmo se a rota estivesse quebrada por outro motivo.
     """
     cabecalho = {"X-Empresa-Id": str(cenario.abacaxi)}
     assert (await autenticado.get("/api/v1/produtos", headers=cabecalho)).status_code == 200
 
-    await _desativar(motor_runtime, Colaborador, Colaborador.email == email_do_token)
+    await _desativar(motor_runtime, Usuario, Usuario.email == email_do_token)
 
     resposta = await autenticado.get("/api/v1/produtos", headers=cabecalho)
-    assert resposta.status_code == 403, resposta.text
-    assert resposta.json()["erro"]["codigo"] == "sem_vinculo_com_empresa"
+    assert resposta.status_code == 401, resposta.text
+    assert resposta.json()["erro"]["codigo"] == "nao_autenticado"
 
 
 async def test_empresa_desativada_deixa_de_ser_operavel(
@@ -203,7 +204,7 @@ async def test_empresa_desativada_deixa_de_ser_operavel(
 async def _desativar(motor: AsyncEngine, modelo: type, condicao: Any) -> None:
     """`tenants` e `employees` são globais — dá para atualizar sem declarar empresa."""
     async with AsyncSession(motor) as sessao:
-        await sessao.execute(update(modelo).where(condicao).values(active=False))
+        await sessao.execute(update(modelo).where(condicao).values(ativo=False))
         await sessao.commit()
 
 

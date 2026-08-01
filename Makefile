@@ -1,4 +1,4 @@
-.PHONY: ajuda hooks db migrar migracao migracoes runtime seed seed-bakeoff api testes \
+.PHONY: ajuda hooks db migrar migracao migracoes runtime seed api testes \
         lint tipos formatar qualidade checar openapi atualizar
 
 VENV ?= .venv
@@ -30,9 +30,6 @@ runtime: ## Põe vitra_runtime no papel vitra_app (uma vez, após a primeira mig
 
 seed: ## Popula permissões, UFs, empresas e o usuário admin
 	$(PY) scripts/seed.py
-
-seed-bakeoff: ## Popula as 7 tabelas do bake-off no Postgres LOCAL (nunca no Neon)
-	$(PY) scripts/seed_bakeoff.py
 
 openapi: ## Publica o contrato em openapi.json — é por ele que o front gera o cliente
 	$(PY) scripts/exportar_openapi.py

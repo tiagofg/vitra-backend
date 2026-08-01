@@ -14,7 +14,6 @@ class ApoioCriar(BaseModel):
     descricao: str = Field(min_length=1, max_length=160)
     codigo: str | None = Field(default=None, max_length=30)
     ordem: int = 0
-    empresa_id: uuid.UUID | None = None
 
 
 class ApoioAtualizar(BaseModel):
@@ -31,7 +30,6 @@ class ApoioSaida(SaidaBase):
     descricao: str
     ordem: int
     ativo: bool
-    empresa_id: uuid.UUID | None = None
 
 
 class DominioSaida(BaseModel):

@@ -22,12 +22,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.db import SessionLocal, engine  # noqa: E402
 from app.core.permissions import pares_do_catalogo  # noqa: E402
 from app.core.security import gerar_hash_senha  # noqa: E402
+from app.core.tenancy import declarar_empresa  # noqa: E402
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf  # noqa: E402
-from app.modules.auth.models import Grupo, Permissao, Usuario  # noqa: E402
+from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa, Filial  # noqa: E402
 
 ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
+ADMIN_EMAIL = os.getenv("VITRA_ADMIN_EMAIL", "admin@vertz.local")
 
 UFS: list[tuple[str, str, str]] = [
     ("AC", "Acre", "12"),
@@ -184,13 +186,12 @@ async def semear_bancos(session: AsyncSession) -> None:
 
 async def semear_apoio(session: AsyncSession) -> int:
     atuais = {
-        (a.dominio, a.codigo, a.empresa_id)
-        for a in (await session.execute(select(TabelaApoio))).scalars().all()
+        (a.dominio, a.codigo) for a in (await session.execute(select(TabelaApoio))).scalars().all()
     }
     criados = 0
     for dominio, valores in APOIO.items():
         for ordem, (codigo, descricao) in enumerate(valores):
-            if (dominio, codigo, None) in atuais:
+            if (dominio, codigo) in atuais:
                 continue
             session.add(
                 TabelaApoio(dominio=dominio, codigo=codigo, descricao=descricao, ordem=ordem)
@@ -213,21 +214,24 @@ async def semear_empresas(session: AsyncSession, ufs: dict[str, Uf]) -> dict[str
             atuais[codigo] = empresa
     await session.flush()
 
-    filiais = {
-        (f.empresa_id, f.codigo) for f in (await session.execute(select(Filial))).scalars().all()
-    }
+    # `filial` está sob RLS: a leitura e a escrita só enxergam a empresa declarada na
+    # transação, então o laço declara cada uma antes de checar/criar a matriz dela — e
+    # dá `flush()` a cada volta, senão o SQLAlchemy tenta agrupar os dois INSERTs num só
+    # `executemany`, que sairia inteiro sob o `SET LOCAL` da última empresa declarada.
     for codigo in ("VERTZ", "VIAHF"):
         empresa = atuais[codigo]
-        if (empresa.id, "001") not in filiais:
+        await declarar_empresa(session, empresa.id)
+        existe = (await session.execute(select(Filial.id).where(Filial.codigo == "001"))).first()
+        if existe is None:
             session.add(
                 Filial(
-                    empresa_id=empresa.id,
+                    tenant_id=empresa.id,
                     codigo="001",
                     nome=f"{empresa.nome_fantasia} — Matriz",
                     matriz=True,
                 )
             )
-    await session.flush()
+        await session.flush()
     return atuais
 
 
@@ -259,12 +263,27 @@ async def semear_acesso(
         admin = Usuario(
             login=ADMIN_LOGIN,
             nome="Administrador",
+            email=ADMIN_EMAIL,
             senha_hash=gerar_hash_senha(ADMIN_SENHA),
             superusuario=True,
-            empresa_id=empresa.id,
         )
         session.add(admin)
     admin.grupos = [grupos["Administradores"]]
+    await session.flush()
+
+    # `employee_company` está sob RLS: o vínculo entra na empresa declarada.
+    await declarar_empresa(session, empresa.id)
+    vinculo = (
+        await session.execute(select(VinculoEmpresa).where(VinculoEmpresa.employee_id == admin.id))
+    ).scalar_one_or_none()
+    if vinculo is None:
+        session.add(
+            VinculoEmpresa(
+                tenant_id=empresa.id,
+                employee_id=admin.id,
+                grupo_id=grupos["Administradores"].id,
+            )
+        )
     await session.flush()
     return admin, criado
 

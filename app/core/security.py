@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -14,6 +15,17 @@ from app.core.errors import NaoAutenticado
 _hasher = PasswordHasher()
 
 TipoToken = Literal["access", "refresh"]
+
+
+@dataclass(frozen=True)
+class ClaimsToken:
+    """O que um token de acesso carrega. `tenant_id` é a empresa ativa no momento da
+    emissão — claim, não header: é o que deixa o cliente operar sem enviar `X-Empresa-Id`
+    em todo pedido. Ausente para quem ainda não escolheu empresa (o token do login inicial,
+    antes de `POST /auth/trocar-empresa`)."""
+
+    usuario_id: uuid.UUID
+    tenant_id: uuid.UUID | None
 
 
 def gerar_hash_senha(senha: str) -> str:
@@ -35,23 +47,27 @@ def precisa_reidratar_hash(senha_hash: str) -> bool:
         return True
 
 
-def criar_token(subject: uuid.UUID, tipo: TipoToken = "access") -> str:
+def criar_token(
+    subject: uuid.UUID, tipo: TipoToken = "access", *, tenant_id: uuid.UUID | None = None
+) -> str:
     agora = datetime.now(UTC)
     if tipo == "access":
         expira = agora + timedelta(minutes=config.jwt_access_ttl_minutos)
     else:
         expira = agora + timedelta(days=config.jwt_refresh_ttl_dias)
-    payload = {
+    payload: dict[str, Any] = {
         "sub": str(subject),
         "tipo": tipo,
         "iat": int(agora.timestamp()),
         "exp": int(expira.timestamp()),
         "jti": uuid.uuid4().hex,
     }
+    if tenant_id is not None:
+        payload["tenant"] = str(tenant_id)
     return jwt.encode(payload, config.jwt_secret, algorithm=config.jwt_algoritmo)
 
 
-def ler_token(token: str, tipo_esperado: TipoToken = "access") -> uuid.UUID:
+def ler_claims(token: str, tipo_esperado: TipoToken = "access") -> ClaimsToken:
     try:
         payload: dict[str, Any] = jwt.decode(
             token, config.jwt_secret, algorithms=[config.jwt_algoritmo]
@@ -64,6 +80,15 @@ def ler_token(token: str, tipo_esperado: TipoToken = "access") -> uuid.UUID:
     if payload.get("tipo") != tipo_esperado:
         raise NaoAutenticado(f"Esperado token do tipo '{tipo_esperado}'.")
     try:
-        return uuid.UUID(payload["sub"])
+        usuario_id = uuid.UUID(payload["sub"])
     except (KeyError, ValueError) as exc:
         raise NaoAutenticado("Token sem subject válido.") from exc
+
+    tenant_bruto = payload.get("tenant")
+    tenant_id = uuid.UUID(tenant_bruto) if tenant_bruto else None
+    return ClaimsToken(usuario_id=usuario_id, tenant_id=tenant_id)
+
+
+def ler_token(token: str, tipo_esperado: TipoToken = "access") -> uuid.UUID:
+    """Atalho para quem só precisa do `usuario_id` — a maioria dos chamadores."""
+    return ler_claims(token, tipo_esperado).usuario_id

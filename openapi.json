@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "VITRA API",
-    "description": "\nBackend do VITRA — núcleo comercial, substituto do SoftLux.\n\n**S0 — Fundação:** autenticação JWT, RBAC granular recurso+ação, empresa/filial/centro de custo\ne a tabela de apoio genérica que cobre os 19 combos das telas do legado.\n\n**SB — Bake-off:** as 7 tabelas do schema compartilhado, com chave primária composta\n`(tenant_id, id)` e multiempresa imposta por Row-Level Security. As rotas marcadas\n`bake-off` exigem o cabeçalho **`X-Empresa-Id`**: a empresa ativa entra na transação\n(`SET LOCAL app.current_tenant`), nunca na query string. Sem o cabeçalho a resposta é\n`400`; com a empresa errada, a listagem simplesmente não enxerga o dado da outra.\n",
+    "description": "\nBackend do VITRA — núcleo comercial, substituto do SoftLux.\n\nAutenticação JWT, RBAC granular recurso+ação, cadastros (empresa/filial/centro de custo,\nprodutos) e a tabela de apoio genérica que cobre os 19 combos das telas do legado.\n\n**Multiempresa por Row-Level Security.** Toda tabela por empresa tem chave primária\ncomposta `(tenant_id, id)` e é recortada pelo Postgres, não pelo serviço. A empresa ativa\nentra na transação a partir de um claim no token (`POST /auth/trocar-empresa`) ou do\ncabeçalho **`X-Empresa-Id`**, que tem prioridade quando presente — é o caminho de quem tem\nvínculo em mais de uma empresa. Sem nenhuma das duas a resposta é `400`; com a empresa\nerrada, a listagem simplesmente não enxerga o dado da outra.\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -325,6 +325,97 @@
         ]
       }
     },
+    "/api/v1/auth/trocar-empresa": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Trocar Empresa",
+        "description": "Reemite o token com `empresa_id` como claim, depois de provar o vínculo.\n\nO front descobre as empresas disponíveis por `GET /empresas` (global, sem RLS) antes\nde chamar isto — não há vínculo nenhum a provar para *listar* empresas, só para\n*operar* numa delas.",
+        "operationId": "trocar_empresa_api_v1_auth_trocar_empresa_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrocarEmpresaEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenSaida"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/grupos": {
       "get": {
         "tags": [
@@ -444,23 +535,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -1574,23 +1648,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -2587,23 +2644,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -2842,23 +2882,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -3004,7 +3027,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__empresa__schemas__EmpresaSaida"
+                  "$ref": "#/components/schemas/EmpresaSaida"
                 }
               }
             }
@@ -3284,7 +3307,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__empresa__schemas__EmpresaSaida"
+                  "$ref": "#/components/schemas/EmpresaSaida"
                 }
               }
             }
@@ -3431,7 +3454,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__empresa__schemas__EmpresaSaida"
+                  "$ref": "#/components/schemas/EmpresaSaida"
                 }
               }
             }
@@ -3592,7 +3615,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__empresa__schemas__EmpresaSaida"
+                  "$ref": "#/components/schemas/EmpresaSaida"
                 }
               }
             }
@@ -3822,8 +3845,8 @@
             "description": "Nulo = todos"
           },
           {
-            "name": "empresa_id",
-            "in": "query",
+            "name": "x-empresa-id",
+            "in": "header",
             "required": false,
             "schema": {
               "anyOf": [
@@ -3835,8 +3858,10 @@
                   "type": "null"
                 }
               ],
-              "title": "Empresa Id"
-            }
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -3851,13 +3876,25 @@
             }
           },
           "400": {
-            "description": "`ordenar_por` fora da whitelist do recurso.",
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa. `ordenar_por` fora da whitelist do recurso.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  },
                   "ordenacao_invalida": {
                     "summary": "`ordenar_por` fora da whitelist do recurso.",
                     "value": {
@@ -3905,7 +3942,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'filial:ler'.",
+            "description": "Usuário autenticado sem a permissão 'filial:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3921,6 +3958,18 @@
                         "campos": {
                           "recurso": "filial",
                           "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -3966,6 +4015,27 @@
             "HTTPBearer": []
           }
         ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3983,6 +4053,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FilialSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4018,7 +4112,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'filial:criar'.",
+            "description": "Usuário autenticado sem a permissão 'filial:criar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4034,6 +4128,18 @@
                         "campos": {
                           "recurso": "filial",
                           "acao": "criar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4115,6 +4221,25 @@
               "format": "uuid",
               "title": "Filial Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -4124,6 +4249,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FilialSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4159,7 +4308,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'filial:ler'.",
+            "description": "Usuário autenticado sem a permissão 'filial:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4175,6 +4324,18 @@
                         "campos": {
                           "recurso": "filial",
                           "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4252,6 +4413,25 @@
               "format": "uuid",
               "title": "Filial Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "requestBody": {
@@ -4271,6 +4451,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FilialSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4306,7 +4510,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'filial:editar'.",
+            "description": "Usuário autenticado sem a permissão 'filial:editar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4322,6 +4526,18 @@
                         "campos": {
                           "recurso": "filial",
                           "acao": "editar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4423,6 +4639,25 @@
               "format": "uuid",
               "title": "Filial Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -4432,6 +4667,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FilialSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4467,7 +4726,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'filial:excluir'.",
+            "description": "Usuário autenticado sem a permissão 'filial:excluir'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4483,6 +4742,18 @@
                         "campos": {
                           "recurso": "filial",
                           "acao": "excluir"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4661,8 +4932,8 @@
             "description": "Nulo = todos"
           },
           {
-            "name": "empresa_id",
-            "in": "query",
+            "name": "x-empresa-id",
+            "in": "header",
             "required": false,
             "schema": {
               "anyOf": [
@@ -4674,8 +4945,10 @@
                   "type": "null"
                 }
               ],
-              "title": "Empresa Id"
-            }
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -4690,13 +4963,25 @@
             }
           },
           "400": {
-            "description": "`ordenar_por` fora da whitelist do recurso.",
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa. `ordenar_por` fora da whitelist do recurso.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeErro"
                 },
                 "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  },
                   "ordenacao_invalida": {
                     "summary": "`ordenar_por` fora da whitelist do recurso.",
                     "value": {
@@ -4744,7 +5029,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'centro_custo:ler'.",
+            "description": "Usuário autenticado sem a permissão 'centro_custo:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4760,6 +5045,18 @@
                         "campos": {
                           "recurso": "centro_custo",
                           "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4805,6 +5102,27 @@
             "HTTPBearer": []
           }
         ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4822,6 +5140,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CentroCustoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4857,7 +5199,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'centro_custo:criar'.",
+            "description": "Usuário autenticado sem a permissão 'centro_custo:criar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4873,6 +5215,18 @@
                         "campos": {
                           "recurso": "centro_custo",
                           "acao": "criar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -4954,6 +5308,25 @@
               "format": "uuid",
               "title": "Centro Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -4963,6 +5336,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CentroCustoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4998,7 +5395,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'centro_custo:ler'.",
+            "description": "Usuário autenticado sem a permissão 'centro_custo:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5014,6 +5411,18 @@
                         "campos": {
                           "recurso": "centro_custo",
                           "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -5091,6 +5500,25 @@
               "format": "uuid",
               "title": "Centro Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "requestBody": {
@@ -5110,6 +5538,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CentroCustoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -5145,7 +5597,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'centro_custo:editar'.",
+            "description": "Usuário autenticado sem a permissão 'centro_custo:editar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5161,6 +5613,18 @@
                         "campos": {
                           "recurso": "centro_custo",
                           "acao": "editar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -5272,6 +5736,25 @@
               "format": "uuid",
               "title": "Centro Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -5281,6 +5764,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CentroCustoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -5316,7 +5823,7 @@
             }
           },
           "403": {
-            "description": "Usuário autenticado sem a permissão 'centro_custo:excluir'.",
+            "description": "Usuário autenticado sem a permissão 'centro_custo:excluir'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5332,6 +5839,18 @@
                         "campos": {
                           "recurso": "centro_custo",
                           "acao": "excluir"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -5577,23 +6096,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -5908,23 +6410,6 @@
               "minimum": 1,
               "default": 20,
               "title": "Limit"
-            }
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
             }
           }
         ],
@@ -6615,23 +7100,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -7337,23 +7805,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -8041,23 +8492,6 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
-          },
-          {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
           }
         ],
         "responses": {
@@ -8180,10 +8614,10 @@
     "/api/v1/produtos": {
       "get": {
         "tags": [
-          "bake-off"
+          "produtos"
         ],
         "summary": "Listar Produtos",
-        "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\nDevolve `{itens, total, pagina, tamanho, paginas}` — o contrato que o TanStack Table\nserver-side do front espera. `empresa_id` **não** é parâmetro: a empresa vem do\ncabeçalho `X-Empresa-Id` e entra na transação, não na query string.",
+        "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\n`tenant_id` não é parâmetro: a empresa vem do token (ou de `X-Empresa-Id`) e entra na\ntransação, nunca da query string.",
         "operationId": "listar_produtos_api_v1_produtos_get",
         "security": [
           {
@@ -8299,23 +8733,6 @@
             "description": "Nulo = todos"
           },
           {
-            "name": "empresa_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Empresa Id"
-            }
-          },
-          {
             "name": "x-empresa-id",
             "in": "header",
             "required": false,
@@ -8329,10 +8746,10 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
             },
-            "description": "UUID da empresa ativa (tenant_id) para este pedido."
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "responses": {
@@ -8347,7 +8764,7 @@
             }
           },
           "400": {
-            "description": "Falta o cabeçalho `X-Empresa-Id`. `ordenar_por` fora da whitelist do recurso.",
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa. `ordenar_por` fora da whitelist do recurso.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8355,13 +8772,13 @@
                 },
                 "examples": {
                   "empresa_nao_declarada": {
-                    "summary": "Falta o cabeçalho `X-Empresa-Id`.",
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
                     "value": {
                       "erro": {
                         "codigo": "empresa_nao_declarada",
-                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
                         "campos": {
-                          "X-Empresa-Id": "obrigatório"
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
                         }
                       }
                     }
@@ -8464,7 +8881,7 @@
       },
       "post": {
         "tags": [
-          "bake-off"
+          "produtos"
         ],
         "summary": "Criar Produto",
         "operationId": "criar_produto_api_v1_produtos_post",
@@ -8488,10 +8905,10 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
             },
-            "description": "UUID da empresa ativa (tenant_id) para este pedido."
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
           }
         ],
         "requestBody": {
@@ -8516,7 +8933,7 @@
             }
           },
           "400": {
-            "description": "Falta o cabeçalho `X-Empresa-Id`.",
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8524,13 +8941,13 @@
                 },
                 "examples": {
                   "empresa_nao_declarada": {
-                    "summary": "Falta o cabeçalho `X-Empresa-Id`.",
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
                     "value": {
                       "erro": {
                         "codigo": "empresa_nao_declarada",
-                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
                         "campos": {
-                          "X-Empresa-Id": "obrigatório"
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
                         }
                       }
                     }
@@ -8609,221 +9026,6 @@
                         "mensagem": "Já existe empresa com código 'VITRA'.",
                         "campos": {
                           "codigo": "já utilizado"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Corpo, query ou cabeçalho fora do schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeErro"
-                },
-                "examples": {
-                  "validacao": {
-                    "summary": "Corpo, query ou cabeçalho fora do schema.",
-                    "value": {
-                      "erro": {
-                        "codigo": "validacao",
-                        "mensagem": "Dados inválidos.",
-                        "campos": {
-                          "nome": "Field required"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/bakeoff/empresas": {
-      "get": {
-        "tags": [
-          "bake-off"
-        ],
-        "summary": "Listar Empresas",
-        "description": "`tenants` é global e não tem RLS — é a raiz do recorte, não algo recortado.\n\nDepende de `Sessao`, não de `SessaoEmpresa`: exigir empresa declarada para descobrir\nquais empresas existem seria um ovo que precisa da galinha. Por isso o `UsuarioAtual`\nexplícito — é a única rota do módulo em que a autenticação não vem de carona.\n\nEla devolve razão social e CNPJ de todas as empresas do grupo. Não é dado secreto, mas\ntambém não é dado público: sem o token, isto era um diretório aberto do grupo Vertz.",
-        "operationId": "listar_empresas_api_v1_bakeoff_empresas_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/app__modules__bakeoff__schemas__EmpresaSaida"
-                  },
-                  "type": "array",
-                  "title": "Response Listar Empresas Api V1 Bakeoff Empresas Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeErro"
-                },
-                "examples": {
-                  "nao_autenticado": {
-                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
-                    "value": {
-                      "erro": {
-                        "codigo": "nao_autenticado",
-                        "mensagem": "Credenciais ausentes ou inválidas.",
-                        "campos": {}
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "headers": {
-              "WWW-Authenticate": {
-                "description": "Sempre `Bearer`.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/bakeoff/empresas/papeis": {
-      "get": {
-        "tags": [
-          "bake-off"
-        ],
-        "summary": "Listar Papeis",
-        "description": "Papéis da empresa ativa. ANA SILVA aparece com papel diferente em cada uma.",
-        "operationId": "listar_papeis_api_v1_bakeoff_empresas_papeis_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-empresa-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "UUID da empresa ativa (tenant_id) para este pedido.",
-              "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa (tenant_id) para este pedido."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PapelSaida"
-                  },
-                  "title": "Response Listar Papeis Api V1 Bakeoff Empresas Papeis Get"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Falta o cabeçalho `X-Empresa-Id`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeErro"
-                },
-                "examples": {
-                  "empresa_nao_declarada": {
-                    "summary": "Falta o cabeçalho `X-Empresa-Id`.",
-                    "value": {
-                      "erro": {
-                        "codigo": "empresa_nao_declarada",
-                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
-                        "campos": {
-                          "X-Empresa-Id": "obrigatório"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeErro"
-                },
-                "examples": {
-                  "nao_autenticado": {
-                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
-                    "value": {
-                      "erro": {
-                        "codigo": "nao_autenticado",
-                        "mensagem": "Credenciais ausentes ou inválidas.",
-                        "campos": {}
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "headers": {
-              "WWW-Authenticate": {
-                "description": "Sempre `Bearer`.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeErro"
-                },
-                "examples": {
-                  "sem_vinculo_com_empresa": {
-                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
-                    "value": {
-                      "erro": {
-                        "codigo": "sem_vinculo_com_empresa",
-                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
-                        "campos": {
-                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
                         }
                       }
                     }
@@ -8986,18 +9188,6 @@
             "type": "integer",
             "title": "Ordem",
             "default": 0
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           }
         },
         "type": "object",
@@ -9032,18 +9222,6 @@
           "ativo": {
             "type": "boolean",
             "title": "Ativo"
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           }
         },
         "type": "object",
@@ -9208,11 +9386,6 @@
       },
       "CentroCustoCriar": {
         "properties": {
-          "empresa_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Empresa Id"
-          },
           "codigo": {
             "type": "string",
             "maxLength": 20,
@@ -9240,11 +9413,11 @@
         },
         "type": "object",
         "required": [
-          "empresa_id",
           "codigo",
           "nome"
         ],
-        "title": "CentroCustoCriar"
+        "title": "CentroCustoCriar",
+        "description": "Sem `tenant_id`: a empresa vem da transação (RLS), não do corpo do pedido."
       },
       "CentroCustoSaida": {
         "properties": {
@@ -9253,10 +9426,10 @@
             "format": "uuid",
             "title": "Id"
           },
-          "empresa_id": {
+          "tenant_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Empresa Id"
+            "title": "Tenant Id"
           },
           "codigo": {
             "type": "string",
@@ -9286,7 +9459,7 @@
         "type": "object",
         "required": [
           "id",
-          "empresa_id",
+          "tenant_id",
           "codigo",
           "nome",
           "ativo"
@@ -10084,6 +10257,318 @@
         ],
         "title": "EmpresaCriar"
       },
+      "EmpresaSaida": {
+        "properties": {
+          "instagram": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram"
+          },
+          "facebook": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook"
+          },
+          "linkedin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin"
+          },
+          "youtube": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Youtube"
+          },
+          "tiktok": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok"
+          },
+          "telefone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telefone"
+          },
+          "telefone_secundario": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telefone Secundario"
+          },
+          "celular": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Celular"
+          },
+          "fax": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fax"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "email_secundario": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Secundario"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "endereco_cep": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 9
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Cep"
+          },
+          "endereco_logradouro": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Logradouro"
+          },
+          "endereco_numero": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Numero"
+          },
+          "endereco_complemento": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Complemento"
+          },
+          "endereco_bairro": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Bairro"
+          },
+          "endereco_ponto_referencia": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Ponto Referencia"
+          },
+          "endereco_cidade_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endereco Cidade Id"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "razao_social": {
+            "type": "string",
+            "title": "Razao Social"
+          },
+          "nome_fantasia": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Fantasia"
+          },
+          "cnpj": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cnpj"
+          },
+          "inscricao_estadual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inscricao Estadual"
+          },
+          "inscricao_municipal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inscricao Municipal"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "ativo": {
+            "type": "boolean",
+            "title": "Ativo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "razao_social",
+          "ativo"
+        ],
+        "title": "EmpresaSaida"
+      },
       "EuSaida": {
         "properties": {
           "id": {
@@ -10100,31 +10585,12 @@
             "title": "Nome"
           },
           "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Email"
           },
           "superusuario": {
             "type": "boolean",
             "title": "Superusuario"
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           },
           "limite_desconto_pct": {
             "type": "string",
@@ -10151,6 +10617,7 @@
           "id",
           "login",
           "nome",
+          "email",
           "superusuario",
           "limite_desconto_pct",
           "grupos",
@@ -10565,11 +11032,6 @@
             ],
             "title": "Endereco Cidade Id"
           },
-          "empresa_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Empresa Id"
-          },
           "codigo": {
             "type": "string",
             "maxLength": 20,
@@ -10605,11 +11067,11 @@
         },
         "type": "object",
         "required": [
-          "empresa_id",
           "codigo",
           "nome"
         ],
-        "title": "FilialCriar"
+        "title": "FilialCriar",
+        "description": "Sem `tenant_id`: a empresa vem da transação (RLS), não do corpo do pedido."
       },
       "FilialSaida": {
         "properties": {
@@ -10786,10 +11248,10 @@
             "format": "uuid",
             "title": "Id"
           },
-          "empresa_id": {
+          "tenant_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Empresa Id"
+            "title": "Tenant Id"
           },
           "codigo": {
             "type": "string",
@@ -10822,7 +11284,7 @@
         "type": "object",
         "required": [
           "id",
-          "empresa_id",
+          "tenant_id",
           "codigo",
           "nome",
           "matriz",
@@ -11149,7 +11611,7 @@
         "properties": {
           "itens": {
             "items": {
-              "$ref": "#/components/schemas/app__modules__empresa__schemas__EmpresaSaida"
+              "$ref": "#/components/schemas/EmpresaSaida"
             },
             "type": "array",
             "title": "Itens"
@@ -11397,32 +11859,6 @@
         ],
         "title": "Pagina[UsuarioSaida]"
       },
-      "PapelSaida": {
-        "properties": {
-          "empresa_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Empresa Id"
-          },
-          "colaborador_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Colaborador Id"
-          },
-          "papel": {
-            "type": "string",
-            "title": "Papel"
-          }
-        },
-        "type": "object",
-        "required": [
-          "empresa_id",
-          "colaborador_id",
-          "papel"
-        ],
-        "title": "PapelSaida",
-        "description": "Uma pessoa e o papel dela numa empresa."
-      },
       "PermissaoSaida": {
         "properties": {
           "id": {
@@ -11499,7 +11935,7 @@
           "estoque_minimo"
         ],
         "title": "PrecoSaida",
-        "description": "Preço e estoque da variante naquela empresa.\n\n`price_cents` sai como veio: inteiro em centavos. Converter para reais é trabalho da\nborda que **apresenta**, e o front do VITRA já faz isso — devolver `12.34` daqui\nreintroduziria float no caminho, que é justamente o que a convenção proíbe."
+        "description": "Preço e estoque da variante naquela empresa.\n\n`preco_cents` sai como veio: inteiro em centavos. Converter para reais é trabalho da\nborda que **apresenta**, e o front do VITRA já faz isso — devolver `12.34` daqui\nreintroduziria float no caminho, que é justamente o que a convenção proíbe."
       },
       "ProdutoCriar": {
         "properties": {
@@ -11528,7 +11964,7 @@
           "descricao"
         ],
         "title": "ProdutoCriar",
-        "description": "Escrita existe para provar o RLS, não para cobrir o cadastro real (isso é a S2).\n\nRepare no que **não** está aqui: `tenant_id`. A empresa vem do cabeçalho, é conferida\ncontra o vínculo do usuário em `employee_company` e só então entra na transação — ver\n`app/modules/bakeoff/deps.py`. Aceitá-la no corpo daria dois caminhos para a mesma\ndecisão, e o segundo passaria longe da checagem."
+        "description": "Esboço herdado do bake-off — a S2 acrescenta o resto das ~20 colunas do catálogo.\n\nRepare no que **não** está aqui: `tenant_id`. A empresa vem da transação (RLS,\n`SessaoEmpresa`), nunca do corpo do pedido."
       },
       "ProdutoSaida": {
         "properties": {
@@ -11566,7 +12002,7 @@
               }
             ],
             "title": "Preco Minimo Cents",
-            "description": "Menor preço entre as variantes. `None` quando nenhuma tem preço na empresa.\n\n`None` e `0` são coisas diferentes e o dado do bake-off traz as duas de propósito:\nproduto sem preço cadastrado versus produto que custa zero. Um `or` no lugar deste\n`is not None` colapsaria os dois casos — é o bug que os dados existem para pegar.",
+            "description": "Menor preço entre as variantes. `None` quando nenhuma tem preço na empresa.\n\n`None` e `0` são coisas diferentes: produto sem preço cadastrado versus produto que\ncusta zero. Um `or` no lugar deste `is not None` colapsaria os dois casos.",
             "readOnly": true
           }
         },
@@ -11615,6 +12051,21 @@
           "refresh_token"
         ],
         "title": "TokenSaida"
+      },
+      "TrocarEmpresaEntrada": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Empresa Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "empresa_id"
+        ],
+        "title": "TrocarEmpresaEntrada",
+        "description": "`X-Empresa-Id` do corpo, não do cabeçalho: o pedido troca o próprio token."
       },
       "UfSaida": {
         "properties": {
@@ -11671,18 +12122,6 @@
               }
             ],
             "title": "Email"
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           },
           "superusuario": {
             "anyOf": [
@@ -11763,28 +12202,9 @@
             "title": "Senha"
           },
           "email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "email",
             "title": "Email"
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           },
           "superusuario": {
             "type": "boolean",
@@ -11820,7 +12240,8 @@
         "required": [
           "login",
           "nome",
-          "senha"
+          "senha",
+          "email"
         ],
         "title": "UsuarioCriar"
       },
@@ -11840,14 +12261,7 @@
             "title": "Nome"
           },
           "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Email"
           },
           "ativo": {
@@ -11857,18 +12271,6 @@
           "superusuario": {
             "type": "boolean",
             "title": "Superusuario"
-          },
-          "empresa_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Empresa Id"
           },
           "limite_desconto_pct": {
             "type": "string",
@@ -11889,6 +12291,7 @@
           "id",
           "login",
           "nome",
+          "email",
           "ativo",
           "superusuario",
           "limite_desconto_pct"
@@ -11949,353 +12352,6 @@
           "ativo"
         ],
         "title": "VarianteSaida"
-      },
-      "app__modules__bakeoff__schemas__EmpresaSaida": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "nome": {
-            "type": "string",
-            "title": "Nome"
-          },
-          "cnpj": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cnpj"
-          },
-          "ativo": {
-            "type": "boolean",
-            "title": "Ativo"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "nome",
-          "ativo"
-        ],
-        "title": "EmpresaSaida"
-      },
-      "app__modules__empresa__schemas__EmpresaSaida": {
-        "properties": {
-          "instagram": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Instagram"
-          },
-          "facebook": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Facebook"
-          },
-          "linkedin": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Linkedin"
-          },
-          "youtube": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Youtube"
-          },
-          "tiktok": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tiktok"
-          },
-          "telefone": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Telefone"
-          },
-          "telefone_secundario": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Telefone Secundario"
-          },
-          "celular": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Celular"
-          },
-          "fax": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fax"
-          },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
-          "email_secundario": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email Secundario"
-          },
-          "site": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Site"
-          },
-          "endereco_cep": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 9
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Cep"
-          },
-          "endereco_logradouro": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Logradouro"
-          },
-          "endereco_numero": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Numero"
-          },
-          "endereco_complemento": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 80
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Complemento"
-          },
-          "endereco_bairro": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 80
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Bairro"
-          },
-          "endereco_ponto_referencia": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Ponto Referencia"
-          },
-          "endereco_cidade_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endereco Cidade Id"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "codigo": {
-            "type": "string",
-            "title": "Codigo"
-          },
-          "razao_social": {
-            "type": "string",
-            "title": "Razao Social"
-          },
-          "nome_fantasia": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nome Fantasia"
-          },
-          "cnpj": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cnpj"
-          },
-          "inscricao_estadual": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Inscricao Estadual"
-          },
-          "inscricao_municipal": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Inscricao Municipal"
-          },
-          "observacao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacao"
-          },
-          "ativo": {
-            "type": "boolean",
-            "title": "Ativo"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "codigo",
-          "razao_social",
-          "ativo"
-        ],
-        "title": "EmpresaSaida"
       },
       "ErroDetalhe": {
         "properties": {

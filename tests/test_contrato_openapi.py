@@ -20,7 +20,7 @@ from httpx import AsyncClient
 
 from app.core.errors import EnvelopeErro
 from app.main import criar_app
-from tests.bakeoff import Cenario
+from tests.cenario import Cenario
 
 # Montar o app não abre conexão — `criar_app()` só monta rotas e schemas.
 CONTRATO: dict[str, Any] = criar_app().openapi()

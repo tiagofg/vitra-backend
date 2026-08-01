@@ -20,9 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.listing import ListParams
 from app.core.tenancy import declarar_empresa
-from app.modules.bakeoff.models import TABELAS_POR_EMPRESA, ProdutoEmpresa
-from app.modules.bakeoff.service import ProdutoService
-from tests.bakeoff import SQL_DECLARAR, Cenario
+from app.models import TABELAS_POR_EMPRESA
+from app.modules.produtos.models import ProdutoEmpresa
+from app.modules.produtos.schemas import ProdutoSaida
+from app.modules.produtos.service import ProdutoService
+from tests.cenario import SQL_DECLARAR, Cenario
 
 # --- 1. a FK composta recusa o cruzamento entre empresas ----------------------
 
@@ -42,10 +44,10 @@ async def test_fk_composta_recusa_preco_de_produto_de_outra_empresa(
         sessao.add(
             ProdutoEmpresa(
                 tenant_id=cenario.abacaxi,
-                variant_id=cenario.variante_livre_abacaxi,
-                price_cents=9990,
-                stock_qty=0,
-                min_stock=0,
+                variante_id=cenario.variante_livre_abacaxi,
+                preco_cents=9990,
+                estoque=0,
+                estoque_minimo=0,
             )
         )
         await sessao.commit()
@@ -55,10 +57,10 @@ async def test_fk_composta_recusa_preco_de_produto_de_outra_empresa(
         sessao.add(
             ProdutoEmpresa(
                 tenant_id=cenario.abacaxi,
-                variant_id=cenario.variante_uva,  # variante da OUTRA empresa
-                price_cents=100,
-                stock_qty=0,
-                min_stock=0,
+                variante_id=cenario.variante_uva,  # variante da OUTRA empresa
+                preco_cents=100,
+                estoque=0,
+                estoque_minimo=0,
             )
         )
         with pytest.raises(IntegrityError) as erro:
@@ -76,12 +78,12 @@ async def test_listagem_sem_filtro_no_codigo_so_ve_a_empresa_declarada(
     """`ProdutoService.listar` não escreve `WHERE tenant_id`. Quem recorta é o banco."""
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
-        pagina = await ProdutoService(sessao).listar(_params())
+        pagina = await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
         codigos_abacaxi = {p.codigo for p in pagina.itens}
 
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        pagina = await ProdutoService(sessao).listar(_params())
+        pagina = await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
         codigos_uva = {p.codigo for p in pagina.itens}
 
     # Positivo: cada uma vê o que é dela.
@@ -151,10 +153,12 @@ async def test_sem_empresa_declarada_volta_vazio_sem_erro(
         # Positivo: com empresa, vem coisa. Sem esta linha o teste passaria contra um banco
         # vazio, contra uma tabela inexistente, contra qualquer coisa.
         await declarar_empresa(sessao, cenario.abacaxi)
-        assert (await ProdutoService(sessao).listar(_params())).total > 0
+        assert (
+            await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
+        ).total > 0
 
     async with AsyncSession(motor_runtime) as sessao:
-        pagina = await ProdutoService(sessao).listar(_params())
+        pagina = await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
 
     assert pagina.total == 0
     assert pagina.itens == []
@@ -176,10 +180,12 @@ async def test_conexao_reciclada_do_pool_nao_carrega_a_empresa_anterior(
     try:
         async with AsyncSession(motor) as sessao:
             await declarar_empresa(sessao, cenario.abacaxi)
-            assert (await ProdutoService(sessao).listar(_params())).total > 0
+            assert (
+                await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
+            ).total > 0
 
         async with AsyncSession(motor) as sessao:
-            pagina = await ProdutoService(sessao).listar(_params())
+            pagina = await ProdutoService(sessao).listar(_params(), ProdutoSaida.model_validate)
         assert pagina.total == 0, "a conexão devolvida ao pool carregou a empresa anterior"
     finally:
         await motor.dispose()
@@ -309,7 +315,6 @@ def _params(**kwargs: object) -> ListParams:
         "ordenar_por": None,
         "ordem": "asc",
         "ativo": None,
-        "empresa_id": None,
     }
     padrao.update(kwargs)
     return ListParams(**padrao)  # type: ignore[arg-type]

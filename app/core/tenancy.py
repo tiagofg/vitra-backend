@@ -46,8 +46,9 @@ class EmpresaNaoDeclarada(ErroDominio):
 
     def __init__(self) -> None:
         super().__init__(
-            "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
-            campos={"X-Empresa-Id": "obrigatório"},
+            "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou "
+            "autentique-se com um token que já carregue a empresa.",
+            campos={"X-Empresa-Id": "obrigatório quando o token não tem empresa"},
         )
 
 
@@ -76,9 +77,10 @@ class SemVinculoComEmpresa(ErroDominio):
 EMPRESA_NAO_DECLARADA = Falha(
     status=EmpresaNaoDeclarada.http_status,
     codigo=EmpresaNaoDeclarada.codigo,
-    descricao="Falta o cabeçalho `X-Empresa-Id`.",
-    mensagem="Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id.",
-    campos={"X-Empresa-Id": "obrigatório"},
+    descricao="Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+    mensagem="Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou "
+    "autentique-se com um token que já carregue a empresa.",
+    campos={"X-Empresa-Id": "obrigatório quando o token não tem empresa"},
 )
 
 SEM_VINCULO_COM_EMPRESA = Falha(
@@ -125,8 +127,8 @@ def _ao_abrir_transacao(
 
 
 # A borda HTTP — de onde vem a empresa e quem pode pedi-la — mora em
-# `app/modules/bakeoff/deps.py`. Ela precisa de `get_session`, de `usuario_atual` e das
-# tabelas do módulo; `db.py` importa este arquivo para registrar o evento, então manter
+# `app/modules/auth/deps.py`. Ela precisa de `get_session`, de `usuario_atual` e da tabela
+# `employee_company`; `db.py` importa este arquivo para registrar o evento, então manter
 # `tenancy` sem essas dependências é o que evita o ciclo de importação.
 #
 # Este módulo é só o mecanismo: como a empresa entra na transação, e o que fazer quando

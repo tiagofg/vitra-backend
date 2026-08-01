@@ -27,17 +27,17 @@ class FilialItem(BaseModel):
 
 async def test_numeracao_e_sequencial_por_serie(sessao: AsyncSession, empresa: Empresa) -> None:
     numeros = [
-        await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
+        await proximo_numero(sessao, tenant_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
         for _ in range(3)
     ]
     assert numeros == [1, 2, 3]
 
 
 async def test_series_e_tipos_contam_separado(sessao: AsyncSession, empresa: Empresa) -> None:
-    a = await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
-    b = await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento, serie="2")
+    a = await proximo_numero(sessao, tenant_id=empresa.id, tipo=TipoDocumento.orcamento, serie="1")
+    b = await proximo_numero(sessao, tenant_id=empresa.id, tipo=TipoDocumento.orcamento, serie="2")
     c = await proximo_numero(
-        sessao, empresa_id=empresa.id, tipo=TipoDocumento.pedido_compra, serie="1"
+        sessao, tenant_id=empresa.id, tipo=TipoDocumento.pedido_compra, serie="1"
     )
     assert a == b == c == 1
 
@@ -49,8 +49,8 @@ async def test_empresas_diferentes_nao_compartilham_numeracao(
     sessao.add(outra)
     await sessao.flush()
 
-    await proximo_numero(sessao, empresa_id=empresa.id, tipo=TipoDocumento.orcamento)
-    numero = await proximo_numero(sessao, empresa_id=outra.id, tipo=TipoDocumento.orcamento)
+    await proximo_numero(sessao, tenant_id=empresa.id, tipo=TipoDocumento.orcamento)
+    numero = await proximo_numero(sessao, tenant_id=outra.id, tipo=TipoDocumento.orcamento)
     assert numero == 1
 
 
@@ -69,7 +69,7 @@ async def test_numeracao_concorrente_nao_repete_numero(motor: AsyncEngine) -> No
     async def reservar() -> int:
         async with AsyncSession(motor) as s:
             numero = await proximo_numero(
-                s, empresa_id=empresa_id, tipo=TipoDocumento.orcamento, serie="1"
+                s, tenant_id=empresa_id, tipo=TipoDocumento.orcamento, serie="1"
             )
             await s.commit()
             return numero
@@ -80,7 +80,7 @@ async def test_numeracao_concorrente_nao_repete_numero(motor: AsyncEngine) -> No
     finally:
         async with AsyncSession(motor) as s:
             await s.execute(
-                delete(ContadorDocumento).where(ContadorDocumento.empresa_id == empresa_id)
+                delete(ContadorDocumento).where(ContadorDocumento.tenant_id == empresa_id)
             )
             await s.execute(delete(Empresa).where(Empresa.id == empresa_id))
             await s.commit()
@@ -91,7 +91,7 @@ async def test_numeracao_concorrente_nao_repete_numero(motor: AsyncEngine) -> No
 
 async def _filiais(sessao: AsyncSession, empresa: Empresa) -> list[Filial]:
     resultado = await sessao.execute(
-        select(Filial).where(Filial.empresa_id == empresa.id).order_by(Filial.codigo)
+        select(Filial).where(Filial.tenant_id == empresa.id).order_by(Filial.codigo)
     )
     return list(resultado.scalars().all())
 
@@ -107,7 +107,7 @@ async def test_substituir_conjunto_insere_atualiza_e_remove(
             FilialItem(codigo="001", nome="Matriz"),
             FilialItem(codigo="002", nome="Filial Sul"),
         ],
-        fixos={"empresa_id": empresa.id},
+        fixos={"tenant_id": empresa.id},
     )
     iniciais = await _filiais(sessao, empresa)
     assert [f.codigo for f in iniciais] == ["001", "002"]
@@ -121,7 +121,7 @@ async def test_substituir_conjunto_insere_atualiza_e_remove(
             FilialItem(id=id_matriz, codigo="001", nome="Matriz Renomeada"),
             FilialItem(codigo="003", nome="Filial Norte"),
         ],
-        fixos={"empresa_id": empresa.id},
+        fixos={"tenant_id": empresa.id},
     )
 
     assert (resultado.criados, resultado.atualizados, resultado.removidos) == (1, 1, 1)
@@ -140,12 +140,12 @@ async def test_substituir_conjunto_com_lista_vazia_limpa_tudo(
         model=Filial,
         existentes=[],
         entrada=[FilialItem(codigo="001", nome="Matriz")],
-        fixos={"empresa_id": empresa.id},
+        fixos={"tenant_id": empresa.id},
     )
     existentes = await _filiais(sessao, empresa)
 
     resultado = await substituir_conjunto(
-        sessao, model=Filial, existentes=existentes, entrada=[], fixos={"empresa_id": empresa.id}
+        sessao, model=Filial, existentes=existentes, entrada=[], fixos={"tenant_id": empresa.id}
     )
     assert resultado.removidos == 1
     assert await _filiais(sessao, empresa) == []
@@ -160,5 +160,5 @@ async def test_substituir_conjunto_recusa_filho_de_outro_pai(
             model=Filial,
             existentes=[],
             entrada=[FilialItem(id=uuid.uuid4(), codigo="001", nome="Intrusa")],
-            fixos={"empresa_id": empresa.id},
+            fixos={"tenant_id": empresa.id},
         )

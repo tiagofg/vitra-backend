@@ -27,6 +27,7 @@ from app.modules.auth.schemas import (
     PermissoesGrupoEntrada,
     RefreshEntrada,
     TokenSaida,
+    TrocarEmpresaEntrada,
     UsuarioAtualizar,
     UsuarioCriar,
     UsuarioSaida,
@@ -71,11 +72,23 @@ async def eu(usuario: UsuarioAtual) -> EuSaida:
         nome=usuario.nome,
         email=usuario.email,
         superusuario=usuario.superusuario,
-        empresa_id=usuario.empresa_id,
         limite_desconto_pct=usuario.limite_desconto_pct,
         grupos=[g.nome for g in usuario.grupos],
         permissoes=sorted(usuario.permissoes_efetivas()),
     )
+
+
+@router_auth.post("/trocar-empresa", response_model=TokenSaida)
+async def trocar_empresa(
+    dados: TrocarEmpresaEntrada, session: Sessao, usuario: UsuarioAtual
+) -> TokenSaida:
+    """Reemite o token com `empresa_id` como claim, depois de provar o vínculo.
+
+    O front descobre as empresas disponíveis por `GET /empresas` (global, sem RLS) antes
+    de chamar isto — não há vínculo nenhum a provar para *listar* empresas, só para
+    *operar* numa delas.
+    """
+    return await AuthService(session).trocar_empresa(usuario, dados.empresa_id)
 
 
 # --- grupos ------------------------------------------------------------------

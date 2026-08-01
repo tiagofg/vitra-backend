@@ -3,12 +3,12 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import BigInteger, Enum, ForeignKey, String, UniqueConstraint, Uuid, select
+from sqlalchemy import BigInteger, Enum, String, UniqueConstraint, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.common.base_model import ModeloBase
+from app.common.base_model import ModeloTenant, pk_tenant
 
 
 class TipoDocumento(enum.StrEnum):
@@ -23,21 +23,20 @@ def enum_col(tipo: type[enum.Enum], nome: str) -> Enum:
     return Enum(tipo, name=nome, values_callable=lambda e: [m.value for m in e])
 
 
-class ContadorDocumento(ModeloBase):
+class ContadorDocumento(ModeloTenant):
     """Sequência por (empresa, tipo, série).
 
     Não é `SEQUENCE` do Postgres de propósito: a numeração precisa ser por empresa+série e
-    sem buracos — e SEQUENCE não faz rollback do valor consumido.
+    sem buracos — e SEQUENCE não faz rollback do valor consumido. Por empresa é agora PK
+    composta `(tenant_id, id)`, como toda tabela por empresa sob RLS.
     """
 
     __tablename__ = "contador_documento"
     __table_args__ = (
-        UniqueConstraint("empresa_id", "tipo", "serie", name="uq_contador_empresa_tipo_serie"),
+        pk_tenant("contador_documento"),
+        UniqueConstraint("tenant_id", "tipo", "serie", name="uq_contador_tenant_tipo_serie"),
     )
 
-    empresa_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("empresa.id", ondelete="RESTRICT"), nullable=False
-    )
     tipo: Mapped[TipoDocumento] = mapped_column(
         enum_col(TipoDocumento, "tipo_documento"), nullable=False
     )
@@ -48,7 +47,7 @@ class ContadorDocumento(ModeloBase):
 async def proximo_numero(
     session: AsyncSession,
     *,
-    empresa_id: uuid.UUID,
+    tenant_id: uuid.UUID,
     tipo: TipoDocumento,
     serie: str = "1",
 ) -> int:
@@ -63,19 +62,19 @@ async def proximo_numero(
         pg_insert(ContadorDocumento)
         .values(
             id=uuid.uuid4(),
-            empresa_id=empresa_id,
+            tenant_id=tenant_id,
             tipo=tipo.value,
             serie=serie,
             ultimo_numero=0,
         )
-        .on_conflict_do_nothing(constraint="uq_contador_empresa_tipo_serie")
+        .on_conflict_do_nothing(constraint="uq_contador_tenant_tipo_serie")
     )
 
     contador = (
         await session.execute(
             select(ContadorDocumento)
             .where(
-                ContadorDocumento.empresa_id == empresa_id,
+                ContadorDocumento.tenant_id == tenant_id,
                 ContadorDocumento.tipo == tipo,
                 ContadorDocumento.serie == serie,
             )

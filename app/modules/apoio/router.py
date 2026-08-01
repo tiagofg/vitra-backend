@@ -57,9 +57,8 @@ async def lookup_apoio(
     _: Annotated[Usuario, Depends(require("apoio", Acao.ler))],
     q: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    empresa_id: uuid.UUID | None = Query(None),
 ) -> list[LookupItem]:
-    return await ApoioService(session, dominio).lookup(q, limit, empresa_id)
+    return await ApoioService(session, dominio).lookup(q, limit)
 
 
 @router_apoio.post("/{dominio}", response_model=ApoioSaida, status_code=status.HTTP_201_CREATED)

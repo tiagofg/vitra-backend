@@ -38,7 +38,6 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
         campo_codigo="codigo",
         campos_ordenacao=("ordem", "codigo", "descricao", "criado_em"),
         ordenacao_padrao="descricao",
-        tem_empresa=True,
     )
 
     def __init__(
@@ -61,10 +60,8 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
         return obj
 
     async def criar(self, dados: ApoioCriar) -> TabelaApoio:
-        codigo = dados.codigo or await self._codigo_livre(
-            slugificar(dados.descricao), dados.empresa_id
-        )
-        if await self._existe(codigo, dados.empresa_id):
+        codigo = dados.codigo or await self._codigo_livre(slugificar(dados.descricao))
+        if await self._existe(codigo):
             raise Conflito(
                 f"Já existe '{codigo}' no domínio '{self.dominio.value}'.",
                 campos={"codigo": "já utilizado"},
@@ -74,7 +71,6 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
             codigo=codigo,
             descricao=dados.descricao,
             ordem=dados.ordem,
-            empresa_id=dados.empresa_id,
             criado_por_id=self.usuario_id,
         )
         self.session.add(obj)
@@ -83,29 +79,18 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
 
     async def _antes_de_atualizar(self, obj: TabelaApoio, valores: dict[str, Any]) -> None:
         novo_codigo = valores.get("codigo")
-        if (
-            novo_codigo
-            and novo_codigo != obj.codigo
-            and await self._existe(novo_codigo, obj.empresa_id)
-        ):
+        if novo_codigo and novo_codigo != obj.codigo and await self._existe(novo_codigo):
             raise Conflito(
                 f"Já existe '{novo_codigo}' no domínio '{self.dominio.value}'.",
                 campos={"codigo": "já utilizado"},
             )
 
-    async def lookup(
-        self, q: str | None, limite: int, empresa_id: uuid.UUID | None
-    ) -> list[LookupItem]:
+    async def lookup(self, q: str | None, limite: int) -> list[LookupItem]:
         stmt = self._stmt_base().where(TabelaApoio.ativo.is_(True))
         if q:
             stmt = stmt.where(
                 contem_sem_acento(TabelaApoio.descricao, q)
                 | contem_sem_acento(TabelaApoio.codigo, q)
-            )
-        if empresa_id is not None:
-            # Valores globais (empresa_id nulo) sempre aparecem.
-            stmt = stmt.where(
-                (TabelaApoio.empresa_id == empresa_id) | (TabelaApoio.empresa_id.is_(None))
             )
         stmt = stmt.order_by(TabelaApoio.ordem, TabelaApoio.descricao).limit(limite)
         return [
@@ -113,20 +98,16 @@ class ApoioService(BaseService[TabelaApoio, ApoioCriar, ApoioAtualizar]):
             for a in (await self.session.execute(stmt)).scalars().all()
         ]
 
-    async def _existe(self, codigo: str, empresa_id: uuid.UUID | None) -> bool:
+    async def _existe(self, codigo: str) -> bool:
         stmt = select(TabelaApoio.id).where(
-            TabelaApoio.dominio == self.dominio,
-            TabelaApoio.codigo == codigo,
-            TabelaApoio.empresa_id.is_(None)
-            if empresa_id is None
-            else TabelaApoio.empresa_id == empresa_id,
+            TabelaApoio.dominio == self.dominio, TabelaApoio.codigo == codigo
         )
         return (await self.session.execute(stmt)).first() is not None
 
-    async def _codigo_livre(self, base: str, empresa_id: uuid.UUID | None) -> str:
+    async def _codigo_livre(self, base: str) -> str:
         candidato = base
         sufixo = 2
-        while await self._existe(candidato, empresa_id):
+        while await self._existe(candidato):
             corte = 30 - len(str(sufixo)) - 1
             candidato = f"{base[:corte]}_{sufixo}"
             sufixo += 1

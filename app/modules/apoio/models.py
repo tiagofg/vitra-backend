@@ -7,7 +7,7 @@ from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint, Uui
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.base_model import ModeloBase
-from app.common.mixins import AtivoMixin, EmpresaOpcionalMixin
+from app.common.mixins import AtivoMixin
 from app.core.numbering import enum_col
 
 
@@ -36,24 +36,29 @@ class DominioApoio(enum.StrEnum):
     tamanho = "tamanho"
 
 
-class TabelaApoio(ModeloBase, AtivoMixin, EmpresaOpcionalMixin):
+class TabelaApoio(ModeloBase, AtivoMixin):
     """Uma tabela para os 19 combos, discriminada por `dominio`.
 
-    `empresa_id` nulo = valor global (compartilhado entre Vertz e Via HF).
+    Tabela física `catalog_lookups` — o schema que o bake-off já trazia (`id`, `kind`,
+    `name`, `active`) e que o plano confirmou como o desenho certo: os 19 combos são
+    vocabulário do grupo inteiro, não de cada empresa. `empresa_id` não existe mais aqui;
+    era o desenho pré-RLS, mantido durante a coexistência dos dois módulos.
     """
 
-    __tablename__ = "tabela_apoio"
+    __tablename__ = "catalog_lookups"
     __table_args__ = (
-        UniqueConstraint("dominio", "codigo", "empresa_id", name="uq_apoio_dominio_codigo_emp"),
-        Index("ix_apoio_dominio_descricao", "dominio", "descricao"),
+        # `UniqueConstraint`/`Index` referenciam o nome **físico** da coluna (o argumento
+        # posicional de `mapped_column`), não o atributo Python.
+        UniqueConstraint("kind", "code", name="uq_catalog_lookups_kind_code"),
+        Index("ix_catalog_lookups_kind_name", "kind", "name"),
     )
 
     dominio: Mapped[DominioApoio] = mapped_column(
-        enum_col(DominioApoio, "dominio_apoio"), nullable=False, index=True
+        "kind", enum_col(DominioApoio, "dominio_apoio"), nullable=False, index=True
     )
-    codigo: Mapped[str] = mapped_column(String(30), nullable=False)
-    descricao: Mapped[str] = mapped_column(String(160), nullable=False)
-    ordem: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    codigo: Mapped[str] = mapped_column("code", String(30), nullable=False)
+    descricao: Mapped[str] = mapped_column("name", String(160), nullable=False)
+    ordem: Mapped[int] = mapped_column("sort_order", Integer, default=0, nullable=False)
 
 
 class Uf(ModeloBase):

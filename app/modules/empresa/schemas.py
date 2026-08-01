@@ -47,7 +47,8 @@ class EmpresaSaida(SaidaBase, EnderecoCampos, ContatosCampos, RedesSociaisCampos
 
 
 class FilialCriar(EnderecoCampos, ContatosCampos):
-    empresa_id: uuid.UUID
+    """Sem `tenant_id`: a empresa vem da transação (RLS), não do corpo do pedido."""
+
     codigo: str = Field(min_length=1, max_length=20)
     nome: str = Field(min_length=1, max_length=160)
     cnpj: Cnpj | None = None
@@ -64,7 +65,7 @@ class FilialAtualizar(EnderecoCampos, ContatosCampos):
 
 class FilialSaida(SaidaBase, EnderecoCampos, ContatosCampos):
     id: uuid.UUID
-    empresa_id: uuid.UUID
+    tenant_id: uuid.UUID
     codigo: str
     nome: str
     cnpj: str | None = None
@@ -73,7 +74,8 @@ class FilialSaida(SaidaBase, EnderecoCampos, ContatosCampos):
 
 
 class CentroCustoCriar(BaseModel):
-    empresa_id: uuid.UUID
+    """Sem `tenant_id`: a empresa vem da transação (RLS), não do corpo do pedido."""
+
     codigo: str = Field(min_length=1, max_length=20)
     nome: str = Field(min_length=1, max_length=160)
     pai_id: uuid.UUID | None = None
@@ -88,7 +90,7 @@ class CentroCustoAtualizar(BaseModel):
 
 class CentroCustoSaida(SaidaBase):
     id: uuid.UUID
-    empresa_id: uuid.UUID
+    tenant_id: uuid.UUID
     codigo: str
     nome: str
     pai_id: uuid.UUID | None = None

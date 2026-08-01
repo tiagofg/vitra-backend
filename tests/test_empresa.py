@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.modules.empresa.models import Empresa
+from app.core.tenancy import declarar_empresa
+from app.modules.empresa.models import Empresa, Filial
+from tests.cenario import Cenario
 
 
 async def test_crud_de_empresa(cliente: AsyncClient, cabecalho_admin: dict[str, str]) -> None:
@@ -67,55 +71,56 @@ async def test_empresa_inexistente_da_404(
 async def test_filial_e_centro_de_custo_ficam_sob_a_empresa(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
+    """`filial`/`centro_custo` estão sob RLS: a empresa vem de `X-Empresa-Id`, não do
+    corpo — o admin da fixture já tem vínculo com `empresa` (ver `conftest.py`)."""
+    cabecalho = {**cabecalho_admin, "X-Empresa-Id": str(empresa.id)}
+
     filial = await cliente.post(
         "/api/v1/filiais",
-        json={
-            "empresa_id": str(empresa.id),
-            "codigo": "001",
-            "nome": "Matriz",
-            "matriz": True,
-        },
-        headers=cabecalho_admin,
+        json={"codigo": "001", "nome": "Matriz", "matriz": True},
+        headers=cabecalho,
     )
-    assert filial.status_code == 201
+    assert filial.status_code == 201, filial.text
+    assert filial.json()["tenant_id"] == str(empresa.id)
 
     centro = await cliente.post(
         "/api/v1/centros-custo",
-        json={"empresa_id": str(empresa.id), "codigo": "CC01", "nome": "Showroom"},
-        headers=cabecalho_admin,
+        json={"codigo": "CC01", "nome": "Showroom"},
+        headers=cabecalho,
     )
-    assert centro.status_code == 201
+    assert centro.status_code == 201, centro.text
 
-    listagem = await cliente.get(
-        "/api/v1/filiais",
-        params={"empresa_id": str(empresa.id)},
-        headers=cabecalho_admin,
-    )
+    listagem = await cliente.get("/api/v1/filiais", headers=cabecalho)
     assert listagem.json()["total"] == 1
 
 
 async def test_filial_de_outra_empresa_nao_aparece_no_recorte(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
+    motor_runtime: AsyncEngine, cenario: Cenario
 ) -> None:
-    outra = await cliente.post(
-        "/api/v1/empresas",
-        json={"codigo": "VIAHF", "razao_social": "Via HF"},
-        headers=cabecalho_admin,
-    )
-    outra_id = outra.json()["id"]
+    """`filial` está sob RLS como qualquer tabela por empresa (S0.5).
 
-    for empresa_id, codigo in ((str(empresa.id), "001"), (outra_id, "002")):
-        await cliente.post(
-            "/api/v1/filiais",
-            json={"empresa_id": empresa_id, "codigo": codigo, "nome": "Matriz"},
-            headers=cabecalho_admin,
-        )
+    `cliente`/`sessao` conectam como **dono** do banco de teste — que aqui é o superusuário
+    do Testcontainers — e por isso ignoram RLS por definição; provar recorte entre
+    empresas exige o papel de runtime, o mesmo usado por `test_rls_isolamento.py`. O 403
+    de quem não tem vínculo já está coberto para o mecanismo compartilhado
+    (`empresa_do_pedido`) em `test_bakeoff_autorizacao.py`, via `/produtos` — não precisa
+    ser reprovado tabela por tabela.
+    """
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.abacaxi)
+        sessao.add(Filial(tenant_id=cenario.abacaxi, codigo="001", nome="Matriz"))
+        await sessao.commit()
 
-    listagem = await cliente.get(
-        "/api/v1/filiais", params={"empresa_id": outra_id}, headers=cabecalho_admin
-    )
-    assert listagem.json()["total"] == 1
-    assert listagem.json()["itens"][0]["codigo"] == "002"
+    async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        sessao.add(Filial(tenant_id=cenario.uva, codigo="002", nome="Matriz"))
+        await sessao.commit()
+
+    async with AsyncSession(motor_runtime) as sessao:
+        await declarar_empresa(sessao, cenario.uva)
+        filiais = (await sessao.execute(select(Filial))).scalars().all()
+
+    assert [f.codigo for f in filiais] == ["002"]
 
 
 async def test_lookup_de_empresa(

@@ -9,6 +9,7 @@ from app.core.deps import Sessao
 from app.core.errors import CONFLITO, NAO_ENCONTRADO, REGRA_DE_NEGOCIO, pode_falhar
 from app.core.listing import ListParams, LookupItem, Pagina
 from app.core.permissions import Acao, require
+from app.modules.auth.deps import EmpresaDoPedido, SessaoEmpresa
 from app.modules.auth.models import Usuario
 from app.modules.empresa.schemas import (
     CentroCustoAtualizar,
@@ -92,7 +93,7 @@ async def desativar_empresa(
 
 @router_filiais.get("", response_model=Pagina[FilialSaida])
 async def listar_filiais(
-    session: Sessao,
+    session: SessaoEmpresa,
     params: Annotated[ListParams, Depends()],
     _: Annotated[Usuario, Depends(require("filial", Acao.ler))],
 ) -> Pagina[FilialSaida]:
@@ -103,17 +104,19 @@ async def listar_filiais(
 @pode_falhar(CONFLITO)
 async def criar_filial(
     dados: FilialCriar,
-    session: Sessao,
+    session: SessaoEmpresa,
+    empresa_id: EmpresaDoPedido,
     usuario: Annotated[Usuario, Depends(require("filial", Acao.criar))],
 ) -> FilialSaida:
-    return FilialSaida.model_validate(await FilialService(session, usuario.id).criar(dados))
+    service = FilialService(session, usuario.id, empresa_id)
+    return FilialSaida.model_validate(await service.criar(dados))
 
 
 @router_filiais.get("/{filial_id}", response_model=FilialSaida)
 @pode_falhar(NAO_ENCONTRADO)
 async def obter_filial(
     filial_id: uuid.UUID,
-    session: Sessao,
+    session: SessaoEmpresa,
     _: Annotated[Usuario, Depends(require("filial", Acao.ler))],
 ) -> FilialSaida:
     return FilialSaida.model_validate(await FilialService(session).obter(filial_id))
@@ -124,7 +127,7 @@ async def obter_filial(
 async def atualizar_filial(
     filial_id: uuid.UUID,
     dados: FilialAtualizar,
-    session: Sessao,
+    session: SessaoEmpresa,
     usuario: Annotated[Usuario, Depends(require("filial", Acao.editar))],
 ) -> FilialSaida:
     service = FilialService(session, usuario.id)
@@ -135,7 +138,7 @@ async def atualizar_filial(
 @pode_falhar(NAO_ENCONTRADO)
 async def desativar_filial(
     filial_id: uuid.UUID,
-    session: Sessao,
+    session: SessaoEmpresa,
     usuario: Annotated[Usuario, Depends(require("filial", Acao.excluir))],
 ) -> FilialSaida:
     service = FilialService(session, usuario.id)
@@ -144,7 +147,7 @@ async def desativar_filial(
 
 @router_centros_custo.get("", response_model=Pagina[CentroCustoSaida])
 async def listar_centros_custo(
-    session: Sessao,
+    session: SessaoEmpresa,
     params: Annotated[ListParams, Depends()],
     _: Annotated[Usuario, Depends(require("centro_custo", Acao.ler))],
 ) -> Pagina[CentroCustoSaida]:
@@ -155,10 +158,11 @@ async def listar_centros_custo(
 @pode_falhar(CONFLITO)
 async def criar_centro_custo(
     dados: CentroCustoCriar,
-    session: Sessao,
+    session: SessaoEmpresa,
+    empresa_id: EmpresaDoPedido,
     usuario: Annotated[Usuario, Depends(require("centro_custo", Acao.criar))],
 ) -> CentroCustoSaida:
-    service = CentroCustoService(session, usuario.id)
+    service = CentroCustoService(session, usuario.id, empresa_id)
     return CentroCustoSaida.model_validate(await service.criar(dados))
 
 
@@ -166,7 +170,7 @@ async def criar_centro_custo(
 @pode_falhar(NAO_ENCONTRADO)
 async def obter_centro_custo(
     centro_id: uuid.UUID,
-    session: Sessao,
+    session: SessaoEmpresa,
     _: Annotated[Usuario, Depends(require("centro_custo", Acao.ler))],
 ) -> CentroCustoSaida:
     return CentroCustoSaida.model_validate(await CentroCustoService(session).obter(centro_id))
@@ -177,7 +181,7 @@ async def obter_centro_custo(
 async def atualizar_centro_custo(
     centro_id: uuid.UUID,
     dados: CentroCustoAtualizar,
-    session: Sessao,
+    session: SessaoEmpresa,
     usuario: Annotated[Usuario, Depends(require("centro_custo", Acao.editar))],
 ) -> CentroCustoSaida:
     service = CentroCustoService(session, usuario.id)
@@ -188,7 +192,7 @@ async def atualizar_centro_custo(
 @pode_falhar(NAO_ENCONTRADO)
 async def desativar_centro_custo(
     centro_id: uuid.UUID,
-    session: Sessao,
+    session: SessaoEmpresa,
     usuario: Annotated[Usuario, Depends(require("centro_custo", Acao.excluir))],
 ) -> CentroCustoSaida:
     service = CentroCustoService(session, usuario.id)

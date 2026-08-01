@@ -7,11 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.base_model import ModeloBase
+from app.common.base_model import _ModeloComId
 from app.core.errors import NaoEncontrado, RegraDeNegocio
 from app.core.listing import ListingSpec, ListParams, Pagina, aplicar_listagem, paginar
 
-M = TypeVar("M", bound=ModeloBase)
+M = TypeVar("M", bound=_ModeloComId)
 CriarSchema = TypeVar("CriarSchema", bound=BaseModel)
 AtualizarSchema = TypeVar("AtualizarSchema", bound=BaseModel)
 
@@ -27,16 +27,32 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
     # já é persistente, então o SQLAlchemy tenta buscar a coleção no banco.
     colecoes_novas: tuple[str, ...] = ()
 
-    def __init__(self, session: AsyncSession, usuario_id: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        usuario_id: uuid.UUID | None = None,
+        tenant_id: uuid.UUID | None = None,
+    ) -> None:
         self.session = session
         self.usuario_id = usuario_id
+        # Só usado por serviços de modelo `ModeloTenant`: injeta o `tenant_id` no `criar()`
+        # sem que cada serviço concreto precise sobrescrever o método só para isso. Não é a
+        # empresa que autoriza a escrita — isso já aconteceu na dependência da rota — é só
+        # o valor que a linha nova precisa carregar.
+        self.tenant_id = tenant_id
 
     @property
     def model(self) -> type[M]:
         return self.spec.model
 
     async def obter(self, id_: uuid.UUID) -> M:
-        obj = await self.session.get(self.model, id_)
+        # `select().where(id == ...)`, não `session.get()`: `session.get()` espera a PK
+        # inteira, e a de um `ModeloTenant` é composta `(tenant_id, id)`. O `WHERE id = ...`
+        # sozinho continua correto porque quem recorta por empresa é o RLS, não este método
+        # — a mesma razão pela qual nenhum serviço escreve `WHERE tenant_id = ...`.
+        obj = (
+            await self.session.execute(select(self.model).where(self.model.id == id_))
+        ).scalar_one_or_none()
         if obj is None:
             raise NaoEncontrado(self.nome_recurso, id_)
         return obj
@@ -51,6 +67,8 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
 
     async def criar(self, dados: CriarSchema) -> M:
         valores = dados.model_dump(exclude_unset=True)
+        if self.tenant_id is not None and hasattr(self.model, "tenant_id"):
+            valores.setdefault("tenant_id", self.tenant_id)
         await self._antes_de_criar(valores)
         obj = self.model(**valores)
         for nome in self.colecoes_novas:
@@ -82,7 +100,10 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
 
     async def reativar(self, id_: uuid.UUID) -> M:
         obj = await self.obter(id_)
-        obj.ativo = True  # type: ignore[attr-defined]
+        if not hasattr(obj, "ativo"):
+            raise RegraDeNegocio(f"{self.nome_recurso} não suporta reativação.")
+        await self._antes_de_reativar(obj)
+        obj.ativo = True
         await self.session.flush()
         return obj
 
@@ -94,4 +115,7 @@ class BaseService(Generic[M, CriarSchema, AtualizarSchema]):
         return None
 
     async def _antes_de_desativar(self, obj: M) -> None:
+        return None
+
+    async def _antes_de_reativar(self, obj: M) -> None:
         return None
