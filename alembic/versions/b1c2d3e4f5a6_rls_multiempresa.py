@@ -85,6 +85,13 @@ def downgrade() -> None:
     for tabela in TABELAS_POR_EMPRESA + TABELAS_GLOBAIS:
         op.execute(f"REVOKE ALL ON {tabela} FROM {PAPEL_RUNTIME}")
     op.execute(f"REVOKE USAGE ON SCHEMA public FROM {PAPEL_RUNTIME}")
+    # `DROP ROLE` leva junto a associação `GRANT {PAPEL_RUNTIME} TO vitra_runtime` — mas
+    # essa associação foi criada **fora** do Alembic, por `scripts/conceder_runtime.sql`
+    # (`make runtime`), rodado uma vez por banco. O próximo `upgrade()` recria o papel
+    # vazio, sem `vitra_runtime` dentro dele, e a aplicação sobe sem privilégio nenhuma nas
+    # tabelas até alguém rodar `make runtime` de novo. Assimetria deliberada — como o
+    # `downgrade` de resto deste arquivo não faz `DROP ROLE` no caminho normal (só aqui,
+    # que é o de desfazer a própria migração que o criou) — mas vale o registro.
     op.execute(f"DROP ROLE IF EXISTS {PAPEL_RUNTIME}")
 
 

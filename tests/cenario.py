@@ -152,6 +152,10 @@ async def criar_usuario_vinculado(
     Passar uma empresa só é o que permite testar o 403: autenticado, mas pedindo a empresa
     do vizinho. O token é emitido direto em vez de passar pelo login: a suíte não está
     testando autenticação aqui, e o argon2 custa caro por teste.
+
+    `superusuario=True`: este cenário exercita RLS e vínculo entre empresas, não RBAC
+    recurso+ação — sem isto, toda rota que ganhou `require(...)` (produtos, por exemplo)
+    devolveria 403 antes mesmo de chegar na checagem que o teste quer provar.
     """
     email = f"pessoa{sufixo_login}+{cenario.sufixo}@grupo.dev"
 
@@ -161,6 +165,7 @@ async def criar_usuario_vinculado(
             nome="Pessoa de Teste",
             email=email,
             senha_hash=_HASH_DESCARTAVEL,
+            superusuario=True,
         )
         sessao.add(usuario)
         await sessao.commit()

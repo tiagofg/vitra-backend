@@ -238,7 +238,21 @@ async def desativar_usuario(
     session: Sessao,
     usuario: Annotated[Usuario, Depends(require("usuario", Acao.excluir))],
 ) -> UsuarioSaida:
-    alvo = await UsuarioService(session, usuario.id).desativar(usuario_id)
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).desativar(usuario_id)
+    return UsuarioSaida.model_validate(alvo)
+
+
+@router_usuarios.post("/{usuario_id}/reativar", response_model=UsuarioSaida)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
+async def reativar_usuario(
+    usuario_id: uuid.UUID,
+    session: Sessao,
+    usuario: Annotated[Usuario, Depends(require("usuario", Acao.editar))],
+) -> UsuarioSaida:
+    """Sem isto, um usuário desativado por engano — ou pela falta da trava que este mesmo
+    commit corrige — só voltava com `UPDATE` direto no banco. `BaseService.reativar()` já
+    existia; faltava um caminho até ele."""
+    alvo = await UsuarioService(session, usuario.id, ator=usuario).reativar(usuario_id)
     return UsuarioSaida.model_validate(alvo)
 
 

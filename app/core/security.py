@@ -91,14 +91,19 @@ def ler_claims(token: str, tipo_esperado: TipoToken = "access") -> ClaimsToken:
 
     if payload.get("tipo") != tipo_esperado:
         raise NaoAutenticado(f"Esperado token do tipo '{tipo_esperado}'.")
+
+    # Todo o parsing abaixo dentro do mesmo `try`: um claim malformado num token com
+    # assinatura válida (nossa própria chave) não devia virar 500 — vira `NaoAutenticado`
+    # como qualquer outro token ruim, e não passa pelo único caminho que escaparia do
+    # envelope `{"erro": {...}}` de `ErroDominio`.
     try:
         usuario_id = uuid.UUID(payload["sub"])
-    except (KeyError, ValueError) as exc:
-        raise NaoAutenticado("Token sem subject válido.") from exc
+        tenant_bruto = payload.get("tenant")
+        tenant_id = uuid.UUID(tenant_bruto) if tenant_bruto else None
+        # `.get("sv", 0)`: tokens emitidos antes deste campo existir (nenhum em produção
+        # ainda) não têm a chave; tratar como versão 0 é o valor inicial de `senha_versao`.
+        senha_versao = int(payload.get("sv", 0))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise NaoAutenticado("Token com claim inválido.") from exc
 
-    tenant_bruto = payload.get("tenant")
-    tenant_id = uuid.UUID(tenant_bruto) if tenant_bruto else None
-    # `.get("sv", 0)`: tokens emitidos antes deste campo existir (nenhum em produção ainda)
-    # não têm a chave; tratar como versão 0 é o mesmo valor inicial de `Usuario.senha_versao`.
-    senha_versao = int(payload.get("sv", 0))
     return ClaimsToken(usuario_id=usuario_id, tenant_id=tenant_id, senha_versao=senha_versao)

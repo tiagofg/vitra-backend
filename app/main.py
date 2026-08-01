@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.core.config import config
 from app.core.db import engine
@@ -32,8 +33,33 @@ errada, a listagem simplesmente não enxerga o dado da outra.
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if config.ambiente == "producao":
+        await _recusar_subir_sem_rls()
     yield
     await engine.dispose()
+
+
+async def _recusar_subir_sem_rls() -> None:
+    """A propriedade "a aplicação não é dono nem tem BYPASSRLS" hoje só é afirmada por um
+    comentário em `config.py`, um `.sql` de implantação e um teste que prova o papel **de
+    teste**, não o implantado. Se `VITRA_DATABASE_URL` apontar para o dono numa implantação
+    futura — troca de variável, ambiente mal configurado — o RLS vira decorativo em
+    silêncio: `tem_vinculo` continua barrando (filtra `tenant_id` explicitamente), mas todo
+    o resto do schema vaza entre empresas sem ninguém perceber. Mesma consulta de
+    `test_papel_de_runtime_nao_e_superusuario_nem_bypassrls`, rodada contra o banco real.
+    """
+    async with engine.connect() as conexao:
+        linha = (
+            await conexao.execute(
+                text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+            )
+        ).one()
+    if linha.rolsuper or linha.rolbypassrls:
+        raise RuntimeError(
+            "A aplicação conectou como superusuário ou com BYPASSRLS — o Row-Level "
+            "Security ficaria decorativo. Corrija VITRA_DATABASE_URL para o papel de "
+            "runtime (sem BYPASSRLS, não dono das tabelas)."
+        )
 
 
 def criar_app() -> FastAPI:
@@ -53,10 +79,17 @@ def criar_app() -> FastAPI:
     )
 
     if config.cors_origens:
+        # `allow_credentials=True` só é seguro com origem explícita: com `"*"` no meio de
+        # `VITRA_CORS_ORIGENS`, o Starlette passa a ecoar de volta a origem do próprio
+        # pedido (é a exigência da spec do CORS para coringa + credencial) — o que na
+        # prática autoriza qualquer site a mandar o Bearer do usuário. A API é Bearer, não
+        # cookie, então não precisa de `allow_credentials` para funcionar; ele só existe
+        # para quem hospedar o front em subdomínio com cookie de sessão no futuro.
+        coringa = "*" in config.cors_origens
         app.add_middleware(
             CORSMiddleware,
             allow_origins=config.cors_origens,
-            allow_credentials=True,
+            allow_credentials=not coringa,
             allow_methods=["*"],
             allow_headers=["*"],
         )

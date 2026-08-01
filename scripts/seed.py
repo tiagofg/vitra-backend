@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.config import config  # noqa: E402
 from app.core.db import SessionLocal, engine  # noqa: E402
 from app.core.permissions import pares_do_catalogo  # noqa: E402
 from app.core.security import gerar_hash_senha  # noqa: E402
@@ -288,7 +289,22 @@ async def semear_acesso(
     return admin, criado
 
 
+def _recusar_senha_padrao_em_producao() -> None:
+    """`Config` já recusa o boot da API com `jwt_secret` default em produção — o seed cria
+    a conta que possui tudo com uma senha que está no Git (`admin12345`) e só imprime
+    "(troque a senha)", o que não impede nada. Mesma classe de risco, guarda equivalente:
+    recusa rodar em produção sem `VITRA_ADMIN_SENHA` explícita no ambiente."""
+    if config.ambiente != "producao":
+        return
+    if "VITRA_ADMIN_SENHA" not in os.environ:
+        raise SystemExit(
+            "Recusando semear produção sem VITRA_ADMIN_SENHA explícita no ambiente — "
+            "o padrão (admin12345) está no repositório."
+        )
+
+
 async def main() -> None:
+    _recusar_senha_padrao_em_producao()
     async with SessionLocal() as session:
         permissoes = await sincronizar_permissoes(session)
         ufs = await semear_ufs(session)

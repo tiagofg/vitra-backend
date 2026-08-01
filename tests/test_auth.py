@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from httpx import AsyncClient
 
 from app.modules.auth.models import Usuario
@@ -153,6 +155,31 @@ async def test_login_bloqueia_apos_tentativas_repetidas(
         "/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO}
     )
     assert bloqueado.status_code == 401
+
+
+async def test_lockout_nao_vira_permanente_apos_a_janela_expirar(
+    cliente: AsyncClient, admin: Usuario, sessao
+) -> None:
+    """Regressão: sem reiniciar `tentativas_falhas` quando `bloqueado_ate` já passou, o
+    contador ficava travado em 5 para sempre — uma tentativa errada isolada, mesmo meses
+    depois, somava 5+1 e re-bloqueava por mais 15 minutos, indefinidamente. Vira DoS por
+    conta a 1 request a cada 15 min, sem precisar de senha nem token.
+    """
+    login = admin.login
+    admin.tentativas_falhas = 5
+    admin.bloqueado_ate = datetime.now(UTC) - timedelta(seconds=1)
+    await sessao.flush()
+
+    # Uma tentativa errada, já com a janela expirada: reinicia a contagem em vez de somar
+    # em cima do que já tinha — se não reiniciasse, isto sozinho já bloquearia de novo.
+    errada = await cliente.post(
+        "/api/v1/auth/login", json={"login": login, "senha": "ainda-errada"}
+    )
+    assert errada.status_code == 401
+
+    # A senha certa, logo em seguida, funciona — a conta não ficou bloqueada de novo.
+    certa = await cliente.post("/api/v1/auth/login", json={"login": login, "senha": SENHA_PADRAO})
+    assert certa.status_code == 200
 
 
 async def test_senha_nova_precisa_ter_tamanho_minimo(

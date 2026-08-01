@@ -45,7 +45,10 @@ class Config(BaseSettings):
     db_max_overflow: int = 20
 
     jwt_secret: str = _JWT_SECRET_PADRAO
-    jwt_algoritmo: str = "HS256"
+    # Só HMAC simétrico: são os três que `pyjwt` verifica sem chave pública separada, e é
+    # o que `criar_token`/`ler_claims` esperam. String livre aceitaria um algoritmo que o
+    # resto do código não sabe usar direito — melhor estourar na config do que em runtime.
+    jwt_algoritmo: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_access_ttl_minutos: int = 60
     jwt_refresh_ttl_dias: int = 7
 

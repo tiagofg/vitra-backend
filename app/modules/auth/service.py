@@ -82,7 +82,17 @@ class AuthService:
             verificar_senha(senha, _HASH_DUMMY)
             raise NaoAutenticado("Login ou senha inválidos.")
 
-        if usuario.bloqueado_ate is not None and usuario.bloqueado_ate > datetime.now(UTC):
+        agora = datetime.now(UTC)
+        if usuario.bloqueado_ate is not None and usuario.bloqueado_ate <= agora:
+            # A janela expirou: reinicia a contagem antes de seguir. Sem isto,
+            # `tentativas_falhas` fica travado em `_TENTATIVAS_MAXIMAS` para sempre — depois
+            # do primeiro bloqueio, uma única tentativa errada isolada (mesmo passados
+            # meses) volta a somar 5+1 e re-bloqueia por mais 15 minutos, indefinidamente.
+            # Vira DoS por conta a 1 request a cada 15 min, e não exige senha nem token.
+            usuario.tentativas_falhas = 0
+            usuario.bloqueado_ate = None
+
+        if usuario.bloqueado_ate is not None and usuario.bloqueado_ate > agora:
             # Verifica mesmo assim: recusar antes de chamar `verificar_senha` devolveria
             # a resposta mais rápido que o caminho de senha errada e vazaria, por timing,
             # que a conta existe e está bloqueada.
@@ -92,7 +102,7 @@ class AuthService:
         if not verificar_senha(senha, usuario.senha_hash):
             usuario.tentativas_falhas += 1
             if usuario.tentativas_falhas >= _TENTATIVAS_MAXIMAS:
-                usuario.bloqueado_ate = datetime.now(UTC) + timedelta(minutes=_BLOQUEIO_MINUTOS)
+                usuario.bloqueado_ate = agora + timedelta(minutes=_BLOQUEIO_MINUTOS)
             # `commit()`, não só `flush()`: `get_session()` desfaz a transação inteira
             # quando qualquer exceção sai do request — inclusive um `NaoAutenticado`
             # esperado — então sem isto o contador de tentativas nunca sobrevivia à
@@ -252,6 +262,15 @@ class UsuarioService(BaseService[Usuario, UsuarioCriar, UsuarioAtualizar]):
                 "Só um superusuário pode conceder superusuário.",
                 codigo="escalada_de_privilegio",
             )
+        # `PUT {"ativo": false}` é a mesma transição de estado que `DELETE`, por outra
+        # rota — e `_antes_de_desativar` só roda para o `DELETE`. Sem isto, a regra "um
+        # usuário não pode desativar a si mesmo" valia numa rota e não na outra.
+        if (
+            valores.get("ativo") is False
+            and self.usuario_id is not None
+            and obj.id == self.usuario_id
+        ):
+            raise RegraDeNegocio("Um usuário não pode desativar a si mesmo.")
         await super()._antes_de_atualizar(obj, valores)
 
     async def definir_senha(self, id_: uuid.UUID, senha_nova: str) -> Usuario:
@@ -271,6 +290,22 @@ class UsuarioService(BaseService[Usuario, UsuarioCriar, UsuarioAtualizar]):
     async def _antes_de_desativar(self, obj: Usuario) -> None:
         if self.usuario_id is not None and obj.id == self.usuario_id:
             raise RegraDeNegocio("Um usuário não pode desativar a si mesmo.")
+        # Mesma trava de criar/atualizar/definir_senha: `usuario:excluir` é permissão de
+        # cadastro rotineira, não autorização para tirar um superusuário do ar. Sem isto,
+        # `DELETE` vira o caminho que ignora a proteção que `PUT {"ativo": false}` já tem —
+        # e como não há rota de reativação além desta, o dano seria irreversível pela API.
+        if obj.superusuario and not self._e_superusuario():
+            raise RegraDeNegocio(
+                "Só um superusuário pode desativar outro superusuário.",
+                codigo="escalada_de_privilegio",
+            )
+
+    async def _antes_de_reativar(self, obj: Usuario) -> None:
+        if obj.superusuario and not self._e_superusuario():
+            raise RegraDeNegocio(
+                "Só um superusuário pode reativar outro superusuário.",
+                codigo="escalada_de_privilegio",
+            )
 
     async def _buscar_grupos(self, grupo_ids: list[uuid.UUID]) -> list[Grupo]:
         if not grupo_ids:
