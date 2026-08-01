@@ -14,6 +14,7 @@ from app.core.openapi import documentar_erros
 from app.modules.apoio.router import routers as routers_apoio
 from app.modules.auth.router import routers as routers_auth
 from app.modules.empresa.router import routers as routers_empresa
+from app.modules.pessoas.router import routers as routers_pessoas
 from app.modules.produtos.router import routers as routers_produtos
 
 DESCRICAO = """
@@ -97,7 +98,13 @@ def criar_app() -> FastAPI:
     registrar_handlers(app)
 
     api = APIRouter(prefix=config.api_prefix)
-    for router in [*routers_auth, *routers_empresa, *routers_apoio, *routers_produtos]:
+    for router in [
+        *routers_auth,
+        *routers_empresa,
+        *routers_apoio,
+        *routers_produtos,
+        *routers_pessoas,
+    ]:
         api.include_router(router)
     app.include_router(api)
 

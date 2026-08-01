@@ -1,10 +1,10 @@
-"""Seed idempotente da S0.
+"""Seed idempotente.
 
     python scripts/seed.py
 
 Cria/atualiza: permissões (a partir do catálogo), UFs, cidades e bancos de exemplo,
-as duas empresas do grupo, os grupos de acesso e o usuário administrador.
-Rodar duas vezes não duplica nada.
+as duas empresas do grupo, os grupos de acesso, o usuário administrador e (S1) cliente,
+fornecedor e transportadora de exemplo sob a VERTZ. Rodar duas vezes não duplica nada.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from app.core.tenancy import declarar_empresa  # noqa: E402
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf  # noqa: E402
 from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa, Filial  # noqa: E402
+from app.modules.pessoas.models import Cliente, Fornecedor, Transportadora  # noqa: E402
 
 ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
@@ -142,7 +143,26 @@ APOIO: dict[DominioApoio, list[tuple[str, str]]] = {
         ("estoque", "Estoque"),
         ("administrativo", "Administrativo"),
     ],
+    DominioApoio.profissao: [
+        ("arquiteto", "Arquiteto(a)"),
+        ("designer_de_interiores", "Designer de interiores"),
+        ("engenheiro", "Engenheiro(a)"),
+    ],
 }
+
+# Cadastros de exemplo da S1 — clientes, fornecedor e transportadora sob a empresa VERTZ.
+CLIENTES: list[tuple[str, str, str]] = [
+    ("CLI001", "Maria Andrade", "fisica"),
+    ("CLI002", "Studio ADR Arquitetura Ltda", "juridica"),
+]
+
+FORNECEDORES: list[tuple[str, str]] = [
+    ("FOR001", "Lumini Distribuidora Ltda"),
+]
+
+TRANSPORTADORAS: list[tuple[str, str]] = [
+    ("TRA001", "Rápido Entrega Transportes Ltda"),
+]
 
 
 async def sincronizar_permissoes(session: AsyncSession) -> list[Permissao]:
@@ -290,6 +310,44 @@ async def semear_acesso(
     return admin, criado
 
 
+async def semear_pessoas(session: AsyncSession, empresa: Empresa) -> int:
+    """Cliente, fornecedor e transportadora de exemplo, sob a empresa dada.
+
+    `cliente`/`fornecedor`/`transportadora` estão sob RLS: a leitura de "já existe?" só
+    enxerga a empresa declarada, então a checagem de idempotência já sai recortada sem
+    filtro escrito à mão — mesmo padrão de `semear_empresas` para `Filial`.
+    """
+    await declarar_empresa(session, empresa.id)
+    criados = 0
+
+    for codigo, nome, tipo_pessoa in CLIENTES:
+        existe = (await session.execute(select(Cliente.id).where(Cliente.codigo == codigo))).first()
+        if existe is None:
+            session.add(
+                Cliente(tenant_id=empresa.id, codigo=codigo, nome=nome, tipo_pessoa=tipo_pessoa)
+            )
+            criados += 1
+
+    for codigo, razao_social in FORNECEDORES:
+        existe = (
+            await session.execute(select(Fornecedor.id).where(Fornecedor.codigo == codigo))
+        ).first()
+        if existe is None:
+            session.add(Fornecedor(tenant_id=empresa.id, codigo=codigo, razao_social=razao_social))
+            criados += 1
+
+    for codigo, nome in TRANSPORTADORAS:
+        existe = (
+            await session.execute(select(Transportadora.id).where(Transportadora.codigo == codigo))
+        ).first()
+        if existe is None:
+            session.add(Transportadora(tenant_id=empresa.id, codigo=codigo, nome=nome))
+            criados += 1
+
+    await session.flush()
+    return criados
+
+
 HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
 
 
@@ -323,12 +381,14 @@ async def main() -> None:
         apoio_criados = await semear_apoio(session)
         empresas = await semear_empresas(session)
         _, admin_criado = await semear_acesso(session, permissoes, empresas["VERTZ"])
+        pessoas_criadas = await semear_pessoas(session, empresas["VERTZ"])
         await session.commit()
 
     print(f"permissões no catálogo : {len(permissoes)}")
     print(f"UFs                    : {len(ufs)}")
     print(f"valores de apoio novos : {apoio_criados}")
     print(f"empresas               : {', '.join(sorted(empresas))}")
+    print(f"pessoas novas (VERTZ)  : {pessoas_criadas}")
     if admin_criado:
         print(f"\nusuário criado: {ADMIN_LOGIN} / {ADMIN_SENHA}  (troque a senha)")
     else:

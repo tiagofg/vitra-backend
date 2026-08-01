@@ -22,6 +22,15 @@ from app.modules.auth.models import (
     usuario_grupo,
 )
 from app.modules.empresa.models import CentroCusto, Empresa, Filial
+from app.modules.pessoas.models import (
+    Cliente,
+    Colaborador,
+    Fornecedor,
+    FornecedorEmpresa,
+    Obra,
+    ProfissionalExterno,
+    Transportadora,
+)
 from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
 
 # Toda tabela por empresa sob RLS, num lugar só. A migração de RLS **não** importa daqui —
@@ -38,6 +47,13 @@ TABELAS_POR_EMPRESA: tuple[str, ...] = (
     Variante.__tablename__,
     ProdutoEmpresa.__tablename__,
     RegistroAuditoria.__tablename__,
+    Cliente.__tablename__,
+    Obra.__tablename__,
+    Fornecedor.__tablename__,
+    FornecedorEmpresa.__tablename__,
+    Colaborador.__tablename__,
+    ProfissionalExterno.__tablename__,
+    Transportadora.__tablename__,
 )
 
 __all__ = [
@@ -46,21 +62,28 @@ __all__ = [
     "Base",
     "CentroCusto",
     "Cidade",
+    "Cliente",
+    "Colaborador",
     "ContadorDocumento",
     "DominioApoio",
     "Empresa",
     "Filial",
+    "Fornecedor",
+    "FornecedorEmpresa",
     "Grupo",
     "ModeloBase",
     "ModeloTenant",
+    "Obra",
     "Permissao",
     "Produto",
     "ProdutoEmpresa",
+    "ProfissionalExterno",
     "RegistroAuditoria",
     "StatusAutorizacao",
     "TabelaApoio",
     "TipoAutorizacao",
     "TipoDocumento",
+    "Transportadora",
     "Uf",
     "Usuario",
     "Variante",
