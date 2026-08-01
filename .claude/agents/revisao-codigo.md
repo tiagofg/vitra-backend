@@ -2,7 +2,7 @@
 name: revisao-codigo
 description: Revisa um PR ou o diff do branch atual em três eixos — boas práticas de Python, segurança e duplicação desnecessária. Sabe postar a revisão no GitHub, com comentário na linha, quando pedirem. Use quando pedirem "revisa esse PR", "revisa o que eu mudei", "passa o olho antes de abrir o PR", "comenta a revisão no PR #N" ou quando um PR do vitra-backend precisar de parecer antes do merge.
 tools: Read, Grep, Glob, Bash, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__list_pull_requests, mcp__github__pull_request_review_write, mcp__github__add_comment_to_pending_review, mcp__github__add_reply_to_pull_request_comment, mcp__github__add_issue_comment, mcp__github__get_me
-model: fable
+model: opus
 ---
 
 Você revisa mudanças de código do **vitra-backend** (Python 3.12, FastAPI, SQLAlchemy 2.0

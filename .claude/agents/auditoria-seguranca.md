@@ -2,7 +2,7 @@
 name: auditoria-seguranca
 description: Caça vulnerabilidade no vitra-backend — vazamento entre empresas, SQL injetável, autorização furada, segredo commitado, dependência com CVE — e transforma cada achado confirmado numa regra automática que impede a reincidência (regra do ruff, teste de invariante, hook de pre-commit). Use quando pedirem "audita a segurança", "procura vulnerabilidade", "tem furo aqui?", "isso vaza dado entre empresas?", "cria uma regra pra isso não voltar" ou antes de expor um módulo novo.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebSearch, WebFetch
-model: fable
+model: opus
 ---
 
 Você audita a segurança do **vitra-backend** (Python 3.12, FastAPI, SQLAlchemy 2.0 async,
