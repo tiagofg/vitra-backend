@@ -15,11 +15,14 @@ iluminação/decoração. Temos duas fontes: `~/Downloads/softlux-telas-transcri
 literal de 20 telas) e `~/Downloads/Telas Softlux.pdf` (12 páginas de capturas). O objetivo é
 reconstruir as funções desse sistema como um backend HTTP próprio.
 
-**Estado:** S0 e **SB (bake-off)** estão entregues neste repositório — os 7 entregáveis, com
-102 testes verdes. O bake-off trouxe consigo uma mudança arquitetural que este plano absorveu
+**Estado:** S0, **SB (bake-off)** e **S0.5 (unificação)** estão entregues neste repositório —
+125 testes verdes. O bake-off trouxe consigo uma mudança arquitetural que este plano absorveu
 por inteiro: **multiempresa deixa de ser `empresa_id` filtrado no serviço e passa a ser
-Row-Level Security com chave composta**. Ver "Multiempresa por RLS", "Bake-off" e "Retrabalho na
-S0 já entregue". A escolha da stack é do Henrique; a nossa coluna está em `notas-bakeoff.md`.
+Row-Level Security com chave composta**. A S0.5 fundiu os dois desenhos que coexistiam desde
+então (`Usuario`/`employees` numa identidade só, `Empresa`→`tenants`, `TabelaApoio`→
+`catalog_lookups`, `Filial`/`CentroCusto`/`ContadorDocumento` sob RLS) e fechou as três decisões
+que ficavam em "Aberto pelo bake-off". Ver "Multiempresa por RLS", "Bake-off" e "Fases de
+implementação". A escolha da stack é do Henrique; a nossa coluna está em `notas-bakeoff.md`.
 
 Se a nossa stack **não** for a escolhida, o que sobrevive deste plano é o modelo de dados e as
 decisões de domínio — as ~20 telas, os 5 mecanismos, o que o legado ensina. Vale para quem
@@ -68,10 +71,11 @@ Hierarquia: `organizations` → `tenants` (1 CNPJ = 1 tenant) → `employees` (i
 `employee_company` (N:N, papel por empresa). E `products` (mestre) → `product_variants`
 (acabamento × tamanho) → `product_tenant` (preço/estoque/fiscal por empresa).
 
-> ⚠️ **Divergência a resolver com o Henrique.** O Resumo Executivo põe o **catálogo mestre no
-> plano global**; o DDL do bake-off cria `products` **com `tenant_id` e RLS**. São desenhos
-> diferentes. No bake-off seguimos o DDL, que é fixo. Para o VITRA real, isso precisa de
-> decisão — e ela muda onde clientes e fornecedores vivem também.
+> ✅ **Resolvido em S0.5.** O Resumo Executivo põe o **catálogo mestre no plano global**; o DDL
+> do bake-off criava `products` **com `tenant_id` e RLS**. Decisão tomada: **tudo por empresa**,
+> como o bake-off já tinha — vale também para clientes, fornecedores e profissionais quando a S1
+> os criar. Leitura consolidada do grupo, quando precisar, é o caminho `groupScoped` (predicado
+> com lista, somente-leitura, auditado) — ainda não modelado, nenhuma tela de S1–S5 o exige.
 
 **Isolamento: dois desenhos em jogo.** O VITRA implementou isolamento na **camada de aplicação**,
 com helpers tipados — `scoped(empresaAtiva)` para leitura/escrita, `groupScoped(vínculos)` para
@@ -451,7 +455,7 @@ Fatos estruturais que a listagem 7.3 revela e que o modelo obedece:
 
 | Grupo | Endpoints |
 |---|---|
-| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/alterar-senha`, `GET /auth/eu` |
+| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/alterar-senha`, `POST /auth/trocar-empresa`, `GET /auth/eu` |
 | Acesso | CRUD `/grupos`, `/usuarios`, `GET/PUT /grupos/{id}/permissoes` |
 | Apoio | `GET` e `POST /apoio/{dominio}`, `GET /cidades/lookup`, `GET /bancos/lookup` |
 | Cadastros | CRUD + `/lookup` para clientes, fornecedores, colaboradores, profissionais-externos, transportadoras |
@@ -665,6 +669,9 @@ qualidade do framework.
 
 ## Retrabalho na S0 já entregue
 
+✅ **Concluído em S0.5** — ver a entrada correspondente em "Fases de implementação". Descrição
+original do que precisava mexer, mantida por registro:
+
 A S0 foi construída com `empresa_id` em coluna, dinheiro em `Numeric(15,2)` e nomes em
 português. A decisão por RLS muda isso. O que precisa mexer, em ordem de dependência:
 
@@ -738,24 +745,52 @@ Três decisões tomadas durante a execução, que valem para o VITRA real:
   sem empresa, `403` sem vínculo, antes de qualquer query de negócio. A checagem roda sob a
   própria política, então nem ela escreve filtro de empresa.
 
-**Retrabalho da S0 — parcialmente feito.** Foi feito o que o bake-off precisava e o que era
-barato: `tenancy.py`, `TenantScopedMixin` com PK composta, `ListingSpec.campo_ativo`,
-Testcontainers no lugar do banco fixo, e CNPJ `varchar(18)` com máscara → `varchar(14)` caixa
-alta sem máscara. **Não** foi feita a renomeação dos módulos da S0 (`Empresa` → `tenants`,
-`TabelaApoio` → `catalog_lookups`, `Usuario` → `employees` + `employee_company`), por um
-motivo que é decisão e não preguiça: o schema fixo do bake-off tem
-`employees(id, name, email, active)` — **sem senha, sem grupo, sem permissão**. Migrar `Usuario`
-para lá agora entregaria um login quebrado sem mover nenhum dos 7 entregáveis, e a ponte
-"papel = grupo, permissões no grupo" é justamente uma das coisas que este plano deixa para
-decidir *depois* do bake-off. Enquanto isso os dois desenhos coexistem: `EmpresaScopedMixin`
-para as tabelas da S0, `TenantScopedMixin` para as novas.
+**S0.5 — Unificação dos dois desenhos.** ✅ *Entregue* (PR #6). A S0 (`EmpresaScopedMixin`,
+`empresa_id` filtrado no serviço) e a SB (`TenantScopedMixin`, RLS) coexistiam desde que o
+bake-off terminou. Esta fase funde os dois antes de começar a S1, para que nenhuma fase nova
+precisasse escolher qual desenho usar:
+
+- `Usuario` e `employees` viram uma identidade só — a ponte por e-mail que `_tem_vinculo`
+  percorria desaparece; `VinculoEmpresa` liga direto a `Usuario.id`.
+- `Empresa` vira a tabela `tenants`; `TabelaApoio` vira `catalog_lookups` (global, sem
+  `empresa_id`); `Filial`/`CentroCusto`/`ContadorDocumento` ganham PK composta e RLS.
+- O módulo `bakeoff/` é dissolvido: produtos vai para `app/modules/produtos/`, o resto se funde
+  nos módulos de domínio (`auth`, `empresa`, `apoio`).
+- As 5 migrações da S0/SB são recolapsadas em duas (`fundacao` + `rls`) — nada em produção
+  ainda, e reescrever o passado sai mais barato que uma sexta migração de dados sobre um schema
+  que muda de desenho pela metade.
+- Auditoria entra como peça transversal (`app/core/audit.py`): tabela `audit_log` append-only
+  sob RLS, papel de runtime só com `SELECT`/`INSERT` (nunca `UPDATE`/`DELETE`). O wiring
+  automático via `before_flush` fica para quando houver um consumidor de verdade — S3/S4; por
+  ora é chamada explícita.
+
+Fecha as três decisões que ficavam em "Aberto pelo bake-off": papel = grupo
+(`employee_company.grupo_id`, FK para `grupo.id`, substituindo o `role` de texto livre —
+`require()` ainda resolve permissão só por `usuario_grupo`/global, RBAC por empresa de verdade
+é trabalho da S2), empresa ativa por claim no JWT (`POST /auth/trocar-empresa` reemite o token;
+`X-Empresa-Id` sobrevive como override para quem tem vínculo em mais de uma empresa — o caso da
+ANA SILVA), e dinheiro em centavos sem exceção (toda tabela nova nasce em `BigInteger`; não
+sobrou `Numeric` para dinheiro no schema).
+
+Uma revisão de segurança e de código no PR encontrou e corrigiu, na mesma leva: `tem_vinculo()`
+confiava só no RLS para recortar `employee_company` — sob dono/superusuário, um vínculo numa
+empresa autorizava todas (o achado mais sério, com teste de regressão sob conexão sem RLS);
+escalada de privilégio via `usuario:editar` (virava superusuário, editava outro superusuário,
+redefinia a senha dele); `jwt_secret` sem guarda de produção; timing de login e ausência de
+trava de força bruta — este último encontrado testando manualmente, não pelos testes
+automatizados: o contador de tentativas não sobrevivia à própria falha de login, porque
+`get_session()` desfaz a transação inteira quando qualquer exceção sai do request. De quebra,
+adianta parte do que a S6 previa: guarda de segredo, `IntegrityError` sem vazar detalhe do
+Postgres ao cliente, `/docs`/`/openapi.json` fora do ar em produção.
 
 **S1 — Cadastros de pessoas.** Cliente (com `obra`), fornecedor (com contatos e
 `fornecedor_empresa` histórico), colaborador, profissional externo, transportadora. Reusa
 mixins de S0; cada um é ~1 modelo + schemas + service herdando `BaseService`.
 
 **S2 — Produtos.** Produto, variantes, `produto_fornecedor`, grupos relacionados,
-especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor.
+especificação JSONB. Endpoint de lookup por código próprio **e** por código do fornecedor. O
+esqueleto (`Produto`/`Variante`/`ProdutoEmpresa`, herdado do bake-off) já existe em
+`app/modules/produtos/` — falta enriquecer, não criar do zero.
 
 **S3 — Estoque.** Depósito, localização, saldo, movimento append-only, reserva. Testes de
 concorrência no saldo (duas saídas simultâneas não podem furar).
@@ -834,13 +869,17 @@ quando houver novas capturas:
   por um identificador comum. A **leitura** consolidada, essa sim, é caso previsto — é o
   `groupScoped` do VITRA, e sob RLS vira predicado com lista, somente-leitura e auditado.
 
-**Aberto pelo bake-off, a decidir quando ele terminar:**
-- **Papel fixo × RBAC granular.** `employee_company.role` tem 5 valores; o plano prevê
-  permissões recurso+ação. A ponte proposta (papel = grupo, permissões no grupo) precisa ser
-  validada contra o que as ~20 telas realmente exigem.
-- **Migração de `Numeric(15,2)` para centavos.** A S0 já gravou `limite_desconto_pct` e o
-  modelo previa dinheiro em `Numeric`. Nada em produção ainda, então a conversão é barata
-  agora e cara depois — é motivo para não adiar a virada.
-- **Onde a empresa ativa vem no request.** JWT, header ou path. O bake-off não decide; o VITRA
-  precisa, e a escolha muda o `Depends` de `tenancy.py`. Recomendação: claim no JWT, com header
-  só para usuário que opera nas duas empresas (o caso da ANA SILVA).
+**Aberto pelo bake-off — resolvido em S0.5:**
+- **Papel fixo × RBAC granular** → papel = grupo. `employee_company.grupo_id` (FK para
+  `grupo.id`) substitui o `role` de texto livre. Ainda não validado contra o que as ~20 telas
+  exigem de verdade: `require()` continua resolvendo permissão só por `usuario_grupo`
+  (global) — RBAC que muda conforme a empresa ativa fica para a S2.
+- **Migração de `Numeric(15,2)` para centavos** → feita. Nenhuma tabela nova guarda dinheiro
+  em `Numeric`; `limite_desconto_pct` (percentual, não dinheiro) segue `Numeric(9,4)`, como a
+  convenção sempre previu.
+- **Onde a empresa ativa vem no request** → claim no JWT (`ClaimsToken.tenant_id`, obtido em
+  `POST /auth/trocar-empresa`), com `X-Empresa-Id` sobrevivendo como override para quem opera
+  em mais de uma empresa — exatamente a recomendação que este plano já registrava.
+
+Detalhe de cada decisão na entrada "S0.5 — Unificação dos dois desenhos", em "Fases de
+implementação".
