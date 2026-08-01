@@ -15,6 +15,7 @@ As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bake
 | `ListParams` — a barra de 7 ações das listagens | `app/core/listing.py` |
 | Numeração série+número por empresa, com `FOR UPDATE` | `app/core/numbering.py` |
 | RBAC granular recurso+ação | `app/core/permissions.py` |
+| Auditoria append-only, na mesma transação da escrita | `app/core/audit.py` |
 | Mixins de endereço, contatos, redes sociais, empresa | `app/common/mixins.py` |
 | *Replace-set* das GRADEs editáveis (diff por PK) | `app/common/child_set.py` |
 | Busca sem acento (`vitra_unaccent`, wrapper `IMMUTABLE`) | `app/core/listing.py` |
@@ -26,14 +27,21 @@ As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bake
 
 | Bloco | Onde |
 |---|---|
-| As 7 tabelas do schema compartilhado, PK composta `(tenant_id, id)` | `app/modules/bakeoff/models.py` |
-| `SET LOCAL app.current_tenant` no `after_begin` + `Depends` da empresa | `app/core/tenancy.py` |
-| Migração das 7 tabelas + RLS em SQL cru (4 políticas por tabela) | `alembic/versions/a1b2c3d4e5f6_*.py` |
-| 4 testes de isolamento, contra Postgres real e como papel de runtime | `tests/test_rls_isolamento.py` |
+| As 7 tabelas do schema compartilhado, PK composta `(tenant_id, id)` | `app/modules/produtos/`, `empresa/`, `auth/`, `apoio/` — índice em `app/models.py` |
+| `SET LOCAL app.current_tenant` no `after_begin` | `app/core/tenancy.py` |
+| Borda HTTP da empresa ativa: token, cabeçalho e vínculo | `app/modules/auth/deps.py` |
+| Migração das 7 tabelas + RLS em SQL cru (4 políticas por tabela) | `alembic/versions/b1c2d3e4f5a6_rls_multiempresa.py` |
+| Testes de isolamento, contra Postgres real e como papel de runtime | `tests/test_rls_isolamento.py` |
 | Concorrência: pedidos simultâneos de empresas diferentes | `tests/test_bakeoff_concorrencia.py` |
-| Listagem de produtos server-side (busca, ordenação, paginação) | `app/modules/bakeoff/service.py` |
-| A mesma listagem contra o Neon compartilhado (opcional) | `tests/test_bakeoff_neon.py` |
+| Quem pode pedir por qual empresa (401 / 400 / 403) | `tests/test_bakeoff_autorizacao.py` |
+| Listagem de produtos server-side (busca, ordenação, paginação) | `app/modules/produtos/service.py` |
 | OpenAPI publicado | `make openapi` → `openapi.json` |
+
+O módulo `bakeoff`, que era um pacote à parte, foi dissolvido nos módulos de domínio: as 7
+tabelas moram onde o assunto delas mora (`products`/`product_variants`/`product_tenant` em
+`produtos`, `tenants` em `empresa`, `employees`/`employee_company` em `auth`,
+`catalog_lookups` em `apoio`). Os testes mantêm o nome `test_bakeoff_*` porque continuam
+provando os entregáveis do bake-off.
 
 ## Multiempresa: quem recorta é o banco
 
@@ -44,7 +52,7 @@ a transação declara a empresa ativa e o Postgres faz o resto.
 Três consequências que mudam como se lê e se escreve o código aqui:
 
 - **O serviço não escreve filtro de empresa.** Se você viu um `WHERE tenant_id` numa query,
-  ou é bug ou é tabela global. Ver `app/modules/bakeoff/service.py`.
+  ou é bug ou é tabela global. Ver `app/modules/produtos/service.py`.
 - **Esquecer a empresa dá listagem vazia, nunca dado da empresa errada.** É a propriedade que
   se está comprando. Em troca, "voltou vazio do nada" vira sintoma comum em desenvolvimento —
   e a primeira hipótese é sempre a mesma: faltou declarar a empresa. Nas rotas, isso falha
@@ -55,13 +63,13 @@ Três consequências que mudam como se lê e se escreve o código aqui:
 
 ### Declarar não é autorizar
 
-As rotas por empresa pedem token **e** o cabeçalho `X-Empresa-Id`, nesta ordem de checagem
-(`app/modules/bakeoff/deps.py`):
+As rotas por empresa pedem token **e** uma empresa ativa, nesta ordem de checagem
+(`app/modules/auth/deps.py`):
 
 | Pergunta | Falha com |
 |---|---|
 | Quem é? | `401` sem token |
-| Qual empresa? | `400` sem `X-Empresa-Id` |
+| Qual empresa? | `400` sem claim `tenant` no token e sem `X-Empresa-Id` |
 | Pode essa empresa? | `403` sem vínculo em `employee_company` |
 
 A terceira não é redundante com o RLS — é o que separa duas defesas diferentes:
@@ -74,9 +82,13 @@ Sem a checagem de vínculo, o encadeamento seria *RLS confia no GUC → GUC conf
 chama. A checagem roda **sob a própria política** — a empresa é declarada antes, então a
 consulta a `employee_company` já sai recortada, sem filtro escrito à mão.
 
-Para o VITRA real a recomendação é *claim no JWT*, com o cabeçalho sobrevivendo só para quem
-opera em mais de uma empresa (o caso da ANA SILVA). A decisão está aberta no plano e está
-concentrada numa função só, para que a troca seja barata.
+A decisão que estava aberta no plano — *claim no JWT* em vez de cabeçalho — está tomada e
+implementada: o token carrega a empresa ativa (`ClaimsToken.tenant_id`), obtida em
+`POST /auth/trocar-empresa`, e o cliente opera sem enviar cabeçalho nenhum. O `X-Empresa-Id`
+sobrevive e **tem prioridade** quando presente, para quem opera em mais de uma empresa (o
+caso da ANA SILVA) e quer trocar sem trocar de token. Os dois caminhos passam pela mesma
+checagem de vínculo: um cabeçalho forjado não vale mais que um claim forjado, porque nenhum
+dos dois é aceito sem prova em `employee_company`.
 
 ## Subir o ambiente
 
@@ -88,8 +100,7 @@ make hooks                        # hooks de pre-commit — uma vez por clone
 docker compose up -d db           # Postgres 17 de desenvolvimento, em localhost:5433
 .venv/bin/alembic upgrade head    # roda como dono (VITRA_DATABASE_URL_ADMIN)
 make runtime                      # põe vitra_runtime no papel vitra_app — uma vez por banco
-.venv/bin/python scripts/seed.py          # permissões, UFs, empresas, usuário admin
-.venv/bin/python scripts/seed_bakeoff.py  # 2 empresas × 200 produtos das 7 tabelas
+.venv/bin/python scripts/seed.py  # permissões, UFs, empresas, grupos, usuário admin
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -105,11 +116,12 @@ stacks. Daí as regras não serem burocracia:
 
 - **Não criar, alterar ou apagar tabela lá.** A estrutura é fixa. A migração se testa
   localmente, em Postgres descartável, recriando a mesma estrutura.
-- **Nenhum teste escreve lá.** A suíte roda local; contra o Neon vai só a listagem, que é
-  leitura. Um teste que suja o dado sujou para os outros dois times.
+- **Nenhum teste escreve lá.** Hoje nenhum teste da suíte sequer aponta para lá: tudo roda
+  contra o Postgres descartável. Teste novo que dependa do Neon é só leitura, e precisa ser
+  pulável sem a variável — no CI ela vem vazia (`VITRA_BAKEOFF_DATABASE_URL: ""`). Um teste
+  que suja o dado sujou para os outros dois times.
 - A string de conexão traz senha real e vive **só no `.env`**. O `.env.example` documenta a
-  variável (`VITRA_BAKEOFF_DATABASE_URL`), nunca o valor. Sem ela, os testes do Neon são
-  pulados — é o caso do CI.
+  variável (`VITRA_BAKEOFF_DATABASE_URL`), nunca o valor.
 - O Neon suspende o banco após alguns minutos ocioso: a primeira conexão depois disso leva
   1–2 s. Não é queda.
 - Bagunçou o dado: avisar o Henrique, que reseta em ~1 min.
@@ -176,7 +188,7 @@ não serviria: ele não cria política nenhuma, e a suíte de isolamento inteira
 um banco sem trava.
 
 Os testes de isolamento conectam como **papel de runtime**, não como dono. Rodá-los como dono
-ou superusuário faz os quatro passarem sem provar nada.
+ou superusuário faz todos passarem sem provar nada.
 
 Precisa de Docker. Para iterar sem subir container a cada rodada, aponte
 `VITRA_TESTE_URL_EXTERNA` para um Postgres já de pé — o schema continua sendo recriado a

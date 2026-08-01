@@ -58,7 +58,11 @@ achado real:
 - **Router só orquestra.** `select()` em router é violação. Regra de negócio no service.
 - **O serviço não escreve filtro de empresa.** Quem recorta é o RLS. Um `WHERE tenant_id` ou
   `.where(Model.tenant_id == ...)` numa tabela por empresa é bug ou tabela global mal
-  entendida — sinalize e confirme em `app/modules/bakeoff/service.py` qual é o caso.
+  entendida — sinalize e confirme em `app/modules/produtos/service.py` qual é o caso. A lista
+  de quem está sob RLS é `TABELAS_POR_EMPRESA`, em `app/models.py`.
+- **Rota por empresa depende de `SessaoEmpresa`**, não de `Sessao` (`app/modules/auth/deps.py`):
+  é a dependência que exige token, resolve a empresa ativa (claim `tenant` do token ou
+  cabeçalho `X-Empresa-Id`) e prova o vínculo em `employee_company` antes de qualquer query.
 - **Toda rota mutante** passa por `Depends(require(recurso, acao))`, com o par no catálogo de
   `app/core/permissions.py`. Rota nova de POST/PUT/PATCH/DELETE sem isso é achado grave.
 - **Erro sai no envelope único** `{"erro": {...}}` — via `ErroDominio` e derivadas
@@ -162,7 +166,7 @@ Não reporte quando:
 - É boilerplate estrutural do framework: router, schema, `__init__`, migração — arquivos de
   módulos diferentes se parecem por desenho.
 - É teste. Repetição em teste costuma ser legibilidade; só sinalize se a suíte tiver
-  fixture pronta para aquilo (`tests/conftest.py`, `tests/banco.py`, `tests/bakeoff.py`).
+  fixture pronta para aquilo (`tests/conftest.py`, `tests/banco.py`, `tests/cenario.py`).
 
 Quando propuser desduplicar, diga **onde** o código deveria morar e **quanto** custa a
 mudança. Proposta sem destino não é acionável.
@@ -176,8 +180,8 @@ aparece lendo só o Python do diff. Confira sempre que o PR os tocar.
 incompleto só falha na *segunda* ida. Leia o `downgrade` linha a linha contra o `upgrade` e
 confirme que ele desfaz **tudo**: tabela, índice, tipo `ENUM`, extensão, função, política de
 RLS e `FORCE`, `GRANT`. Ordem inversa da criação, respeitando FK — a migração de RLS
-(`a1b2c3d4e5f6_*.py`) é a referência de como fica certo, incluindo a decisão de **não** dar
-`DROP ROLE` no papel de runtime, que sobrevive ao downgrade de propósito.
+(`b1c2d3e4f5a6_rls_multiempresa.py`) é a referência de como fica certo, incluindo a decisão
+de **não** dar `DROP ROLE` no papel de runtime, que sobrevive ao downgrade de propósito.
 
 Ainda em migração: duas cabeças (rode `python scripts/checar_migracoes.py`); `op.execute` com
 f-string sobre valor vindo de fora da migração; `NOT NULL` adicionado sem `server_default` em
@@ -194,9 +198,9 @@ mudança de rota, indica geração a partir de uma árvore suja.
 **Banco compartilhado do bake-off (Neon).** É usado ao mesmo tempo por duas outras stacks.
 São bloqueio, sem exceção: teste que **escreve** lá (só leitura é permitida); qualquer DDL
 (`CREATE`/`ALTER`/`DROP`) apontado para lá; a string de conexão saindo do `.env` para dentro
-do repositório — inclusive em fixture, docstring ou comentário "só para testar". Teste novo
-que dependa do Neon precisa ser pulável sem a variável `VITRA_BAKEOFF_DATABASE_URL`, como os
-de `tests/test_bakeoff_neon.py`, porque no CI ela vem vazia.
+do repositório — inclusive em fixture, docstring ou comentário "só para testar". Hoje nenhum
+teste da suíte aponta para lá; teste novo que dependa do Neon precisa ser pulável sem a
+variável `VITRA_BAKEOFF_DATABASE_URL`, porque no CI ela vem vazia.
 
 ## 8. Verifique antes de reportar
 
