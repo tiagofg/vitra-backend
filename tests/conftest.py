@@ -13,9 +13,22 @@ from tests import banco
 # `VITRA_DATABASE_URL` sobrescreve o que estiver no `.env` — variável de ambiente vence
 # arquivo no pydantic-settings. É o que garante que rodar a suíte nunca toque no banco de
 # desenvolvimento de ninguém, mesmo com `.env` apontando para lá.
+#
+# **As duas variáveis, não só uma.** `Config.url_migracao` é `database_url_admin or
+# database_url`, e é ela que o `env.py` do Alembic usa. Sobrescrever só a segunda deixava
+# `VITRA_DATABASE_URL_ADMIN` do `.env` vencer, e o `alembic upgrade head` da fixture
+# `schema` rodava contra o banco de **desenvolvimento** — criando as tabelas lá e deixando
+# o container descartável vazio, onde a suíte então falhava em `GRANT vitra_app` porque a
+# migração que cria o papel nunca tinha rodado ali. Como `.env.example` já traz o admin
+# apontando para `localhost:5433`, bastava ter o Postgres de desenvolvimento no ar para
+# cair nisso; o CI nunca viu porque lá não existe `.env` e o fallback pega a URL certa.
+#
+# Nos testes o superusuário do container é o dono das tabelas, então as duas URLs são a
+# mesma — o que a suíte precisa distinguir é dono × runtime, e disso cuida `BANCO`.
 os.environ["VITRA_AMBIENTE"] = "teste"
 BANCO = banco.iniciar()
 os.environ["VITRA_DATABASE_URL"] = BANCO.url_dono
+os.environ["VITRA_DATABASE_URL_ADMIN"] = BANCO.url_dono
 
 import pytest  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402
