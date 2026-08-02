@@ -1,49 +1,90 @@
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from app.core.errors import CONFLITO, pode_falhar
-from app.core.listing import ListParams, Pagina
+from app.common.crud_router import crud_router
+from app.core.errors import NAO_ENCONTRADO, REGRA_DE_NEGOCIO, pode_falhar
 from app.core.permissions import Acao, require
 from app.modules.auth.deps import EmpresaDoPedido, SessaoEmpresa
 from app.modules.auth.models import Usuario
-from app.modules.produtos.schemas import ProdutoCriar, ProdutoSaida
-from app.modules.produtos.service import ProdutoService
+from app.modules.produtos.schemas import (
+    ItemRelacionadoCriar,
+    ItemRelacionadoSaida,
+    ProdutoAtualizar,
+    ProdutoCriar,
+    ProdutoSaida,
+)
+from app.modules.produtos.service import ItemRelacionadoService, ProdutoService
 
-router_produtos = APIRouter(prefix="/produtos", tags=["produtos"])
+router_produtos = crud_router(
+    prefixo="/produtos",
+    tag="produtos",
+    recurso="produto",
+    service=ProdutoService,
+    criar=ProdutoCriar,
+    atualizar=ProdutoAtualizar,
+    saida=ProdutoSaida,
+    # `ConfereDominiosMixin` levanta `dominio_invalido`/`referencia_invalida` nas nove FKs
+    # para `catalog_lookups` — sem isto o contrato só publicaria o `422 validacao` genérico.
+    falhas_extra=(REGRA_DE_NEGOCIO,),
+)
 
 
-@router_produtos.get("", response_model=Pagina[ProdutoSaida])
-async def listar_produtos(
+# --- itens de um grupo relacionado: fora do padrão da fábrica ---------------------
+#
+# `grupo_relacionado` em si não tem rota própria — é uma das três grades do
+# `PUT /produtos/{id}` (`ProdutoService._resolver_relacoes`). Só os itens dentro de um
+# grupo têm rota: a tela adiciona/remove um de cada vez, não substitui o conjunto inteiro.
+
+router_itens_relacionados = APIRouter(
+    prefix="/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens", tags=["produtos"]
+)
+
+
+@router_itens_relacionados.get("", response_model=list[ItemRelacionadoSaida])
+@pode_falhar(NAO_ENCONTRADO)
+async def listar_itens_relacionados(
+    produto_id: uuid.UUID,
+    grupo_id: uuid.UUID,
     _: Annotated[Usuario, Depends(require("produto", Acao.ler))],
     session: SessaoEmpresa,
-    params: Annotated[ListParams, Depends()],
-) -> Pagina[ProdutoSaida]:
-    """Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.
-
-    `tenant_id` não é parâmetro: a empresa vem do token (ou de `X-Empresa-Id`) e entra na
-    transação, nunca da query string.
-
-    `require(...)` é declarado antes de `SessaoEmpresa`: dependências irmãs são resolvidas
-    na ordem do parâmetro, e quem não tem a permissão precisa ver 403 mesmo sem ter
-    declarado `X-Empresa-Id` — não um 400 que revela que a falta de permissão nem chegou a
-    ser checada.
-    """
-    return await ProdutoService(session).listar(params, ProdutoSaida.model_validate)
+) -> list[ItemRelacionadoSaida]:
+    itens = await ItemRelacionadoService(session, produto_id, grupo_id).listar()
+    return [ItemRelacionadoSaida.model_validate(item) for item in itens]
 
 
-@router_produtos.post("", response_model=ProdutoSaida, status_code=status.HTTP_201_CREATED)
-@pode_falhar(CONFLITO)
-async def criar_produto(
-    dados: ProdutoCriar,
-    _: Annotated[Usuario, Depends(require("produto", Acao.criar))],
+@router_itens_relacionados.post(
+    "", response_model=ItemRelacionadoSaida, status_code=status.HTTP_201_CREATED
+)
+@pode_falhar(NAO_ENCONTRADO, REGRA_DE_NEGOCIO)
+async def criar_item_relacionado(
+    produto_id: uuid.UUID,
+    grupo_id: uuid.UUID,
+    dados: ItemRelacionadoCriar,
+    usuario: Annotated[Usuario, Depends(require("produto", Acao.editar))],
     session: SessaoEmpresa,
     empresa_id: EmpresaDoPedido,
-) -> ProdutoSaida:
-    produto = await ProdutoService(session, tenant_id=empresa_id).criar(dados)
-    return ProdutoSaida.model_validate(produto)
+) -> ItemRelacionadoSaida:
+    service = ItemRelacionadoService(session, produto_id, grupo_id, usuario.id, empresa_id)
+    return ItemRelacionadoSaida.model_validate(await service.criar(dados))
 
 
-routers = [router_produtos]
+@router_itens_relacionados.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@pode_falhar(NAO_ENCONTRADO)
+async def remover_item_relacionado(
+    produto_id: uuid.UUID,
+    grupo_id: uuid.UUID,
+    item_id: uuid.UUID,
+    usuario: Annotated[Usuario, Depends(require("produto", Acao.editar))],
+    session: SessaoEmpresa,
+    empresa_id: EmpresaDoPedido,
+) -> None:
+    await ItemRelacionadoService(session, produto_id, grupo_id, usuario.id, empresa_id).remover(
+        item_id
+    )
+
+
+routers = [router_produtos, router_itens_relacionados]

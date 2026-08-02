@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.security import criar_token, gerar_hash_senha
 from app.core.tenancy import GUC_EMPRESA, declarar_empresa
+from app.modules.apoio.models import DominioApoio, TabelaApoio
 from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa
 from app.modules.empresa.models import Empresa
 from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
@@ -100,6 +101,27 @@ async def montar_cenario(motor: AsyncEngine) -> Cenario:
     )
 
 
+async def apoio_id(
+    sessao: AsyncSession, dominio: DominioApoio, codigo: str, nome: str
+) -> uuid.UUID:
+    """Get-or-create num valor de `catalog_lookups` — global, então reaproveitado entre
+    empresas e entre execuções que caiam no mesmo `codigo`. Mesmo padrão de
+    `_grupo_produtos` para `Grupo`."""
+    existente = (
+        await sessao.execute(
+            select(TabelaApoio.id).where(
+                TabelaApoio.dominio == dominio, TabelaApoio.codigo == codigo
+            )
+        )
+    ).scalar_one_or_none()
+    if existente is not None:
+        return existente
+    novo = TabelaApoio(dominio=dominio, codigo=codigo, descricao=nome)
+    sessao.add(novo)
+    await sessao.flush()
+    return novo.id
+
+
 async def _catalogo_da_empresa(
     motor: AsyncEngine, empresa_id: uuid.UUID, codigo: str, descricao: str
 ) -> uuid.UUID:
@@ -111,6 +133,12 @@ async def _catalogo_da_empresa(
     async with AsyncSession(motor, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, empresa_id)
 
+        # `catalog_lookups` é global e sem RLS: o get-or-create roda sob a mesma conexão
+        # declarada para `empresa_id`, mas a tabela em si não é recortada por tenant.
+        acabamento_id = await apoio_id(sessao, DominioApoio.acabamento, "cobre", "Cobre")
+        tamanho_p_id = await apoio_id(sessao, DominioApoio.tamanho, "p", "Pequeno")
+        tamanho_g_id = await apoio_id(sessao, DominioApoio.tamanho, "g", "Grande")
+
         produto = Produto(tenant_id=empresa_id, codigo=codigo, descricao=descricao, ativo=True)
         sessao.add(produto)
         await sessao.flush()
@@ -118,15 +146,15 @@ async def _catalogo_da_empresa(
         com_preco = Variante(
             tenant_id=empresa_id,
             produto_id=produto.id,
-            acabamento="cobre",
-            tamanho="P",
+            acabamento_id=acabamento_id,
+            tamanho_id=tamanho_p_id,
             ativo=True,
         )
         sem_preco = Variante(
             tenant_id=empresa_id,
             produto_id=produto.id,
-            acabamento="cobre",
-            tamanho="G",
+            acabamento_id=acabamento_id,
+            tamanho_id=tamanho_g_id,
             ativo=True,
         )
         sessao.add_all([com_preco, sem_preco])

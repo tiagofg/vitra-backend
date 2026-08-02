@@ -535,6 +535,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -662,6 +679,25 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "requestBody": {
@@ -813,6 +849,23 @@
               "format": "uuid",
               "title": "Grupo Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -949,6 +1002,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -1122,6 +1192,23 @@
               "format": "uuid",
               "title": "Grupo Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -1260,6 +1347,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -1402,6 +1506,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -1649,6 +1770,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -1776,6 +1914,25 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "requestBody": {
@@ -1959,6 +2116,23 @@
               "format": "uuid",
               "title": "Usuario Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -2095,6 +2269,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Usuario Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -2277,6 +2468,23 @@
               "format": "uuid",
               "title": "Usuario Id"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -2425,6 +2633,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Usuario Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -2578,6 +2803,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Usuario Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -2825,6 +3067,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -3063,6 +3322,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -3190,6 +3466,25 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "requestBody": {
@@ -3359,6 +3654,23 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -3479,6 +3791,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Empresa Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -3616,6 +3945,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Empresa Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -3787,6 +4133,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Empresa Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -4039,10 +4402,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -4211,10 +4572,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "requestBody": {
@@ -4417,10 +4776,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -4609,10 +4966,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "requestBody": {
@@ -4835,10 +5190,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -5126,10 +5479,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -5298,10 +5649,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "requestBody": {
@@ -5504,10 +5853,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -5696,10 +6043,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "requestBody": {
@@ -5932,10 +6277,8 @@
                   "type": "null"
                 }
               ],
-              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
               "title": "X-Empresa-Id"
-            },
-            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+            }
           }
         ],
         "responses": {
@@ -6277,6 +6620,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -6414,6 +6774,23 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/DominioApoio"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -6592,6 +6969,23 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -6720,6 +7114,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -6865,6 +7276,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -7044,6 +7472,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -7281,6 +7726,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -7408,6 +7870,25 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "requestBody": {
@@ -7595,6 +8076,23 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -7715,6 +8213,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Cidade Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -7986,6 +8501,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -8113,6 +8645,25 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "requestBody": {
@@ -8282,6 +8833,23 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -8402,6 +8970,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Banco Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
             }
           }
         ],
@@ -8673,6 +9258,23 @@
               "title": "Ativo"
             },
             "description": "Nulo = todos"
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Empresa-Id"
+            }
           }
         ],
         "responses": {
@@ -8797,9 +9399,8 @@
         "tags": [
           "produtos"
         ],
-        "summary": "Listar Produtos",
-        "description": "Listagem server-side: busca sem acento, ordenação e paginação, tudo no servidor.\n\n`tenant_id` não é parâmetro: a empresa vem do token (ou de `X-Empresa-Id`) e entra na\ntransação, nunca da query string.\n\n`require(...)` é declarado antes de `SessaoEmpresa`: dependências irmãs são resolvidas\nna ordem do parâmetro, e quem não tem a permissão precisa ver 403 mesmo sem ter\ndeclarado `X-Empresa-Id` — não um 400 que revela que a falta de permissão nem chegou a\nser checada.",
-        "operationId": "listar_produtos_api_v1_produtos_get",
+        "summary": "Listar Produto",
+        "operationId": "listar_produto",
         "security": [
           {
             "HTTPBearer": []
@@ -9078,7 +9679,7 @@
           "produtos"
         ],
         "summary": "Criar Produto",
-        "operationId": "criar_produto_api_v1_produtos_post",
+        "operationId": "criar_produto",
         "security": [
           {
             "HTTPBearer": []
@@ -9234,6 +9835,1469 @@
                         "campos": {
                           "codigo": "já utilizado"
                         }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/produtos/lookup": {
+      "get": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Lookup Produto",
+        "operationId": "lookup_produto",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LookupItem"
+                  },
+                  "title": "Response Lookup Produto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:ler'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'ler' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/produtos/{item_id}": {
+      "get": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Obter Produto",
+        "operationId": "obter_produto",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProdutoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:ler'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'ler' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Atualizar Produto",
+        "operationId": "atualizar_produto",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProdutoAtualizar"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProdutoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:editar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:editar'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'editar' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "editar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Viola unicidade ou um vínculo do banco — código, login ou e-mail repetido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "conflito": {
+                    "summary": "Viola unicidade ou um vínculo do banco — código, login ou e-mail repetido.",
+                    "value": {
+                      "erro": {
+                        "codigo": "conflito",
+                        "mensagem": "Já existe empresa com código 'VITRA'.",
+                        "campos": {
+                          "codigo": "já utilizado"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Desativar Produto",
+        "operationId": "desativar_produto",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProdutoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:excluir'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:excluir'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'excluir' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "excluir"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens": {
+      "get": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Listar Itens Relacionados",
+        "operationId": "listar_itens_relacionados_api_v1_produtos__produto_id__grupos_relacionados__grupo_id__itens_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "produto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Produto Id"
+            }
+          },
+          {
+            "name": "grupo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemRelacionadoSaida"
+                  },
+                  "title": "Response Listar Itens Relacionados Api V1 Produtos  Produto Id  Grupos Relacionados  Grupo Id  Itens Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:ler'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:ler'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'ler' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "ler"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Criar Item Relacionado",
+        "operationId": "criar_item_relacionado_api_v1_produtos__produto_id__grupos_relacionados__grupo_id__itens_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "produto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Produto Id"
+            }
+          },
+          {
+            "name": "grupo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemRelacionadoCriar"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemRelacionadoSaida"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:editar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:editar'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'editar' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "editar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A operação é sintaticamente válida, mas o domínio a recusa. Corpo, query ou cabeçalho fora do schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "regra_de_negocio": {
+                    "summary": "A operação é sintaticamente válida, mas o domínio a recusa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "regra_de_negocio",
+                        "mensagem": "Um usuário não pode desativar a si mesmo.",
+                        "campos": {}
+                      }
+                    }
+                  },
+                  "validacao": {
+                    "summary": "Corpo, query ou cabeçalho fora do schema.",
+                    "value": {
+                      "erro": {
+                        "codigo": "validacao",
+                        "mensagem": "Dados inválidos.",
+                        "campos": {
+                          "nome": "Field required"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens/{item_id}": {
+      "delete": {
+        "tags": [
+          "produtos"
+        ],
+        "summary": "Remover Item Relacionado",
+        "operationId": "remover_item_relacionado_api_v1_produtos__produto_id__grupos_relacionados__grupo_id__itens__item_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "produto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Produto Id"
+            }
+          },
+          {
+            "name": "grupo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Grupo Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver.",
+              "title": "X-Empresa-Id"
+            },
+            "description": "UUID da empresa ativa. Sobrepõe a empresa do token, se houver."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "empresa_nao_declarada": {
+                    "summary": "Nem o token nem o cabeçalho `X-Empresa-Id` trazem uma empresa ativa.",
+                    "value": {
+                      "erro": {
+                        "codigo": "empresa_nao_declarada",
+                        "mensagem": "Nenhuma empresa ativa no pedido. Informe o cabeçalho X-Empresa-Id ou autentique-se com um token que já carregue a empresa.",
+                        "campos": {
+                          "X-Empresa-Id": "obrigatório quando o token não tem empresa"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_autenticado": {
+                    "summary": "Token ausente, expirado, inválido, ou de usuário que não existe mais.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_autenticado",
+                        "mensagem": "Credenciais ausentes ou inválidas.",
+                        "campos": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário autenticado sem a permissão 'produto:editar'. Autenticado, mas sem vínculo ativo com a empresa pedida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "sem_permissao": {
+                    "summary": "Usuário autenticado sem a permissão 'produto:editar'.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_permissao",
+                        "mensagem": "Usuário não tem permissão de 'editar' sobre 'produto'.",
+                        "campos": {
+                          "recurso": "produto",
+                          "acao": "editar"
+                        }
+                      }
+                    }
+                  },
+                  "sem_vinculo_com_empresa": {
+                    "summary": "Autenticado, mas sem vínculo ativo com a empresa pedida.",
+                    "value": {
+                      "erro": {
+                        "codigo": "sem_vinculo_com_empresa",
+                        "mensagem": "Usuário não tem vínculo com a empresa informada.",
+                        "campos": {
+                          "X-Empresa-Id": "6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "O identificador da rota não corresponde a nenhum registro visível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeErro"
+                },
+                "examples": {
+                  "nao_encontrado": {
+                    "summary": "O identificador da rota não corresponde a nenhum registro visível.",
+                    "value": {
+                      "erro": {
+                        "codigo": "nao_encontrado",
+                        "mensagem": "Empresa 6f1c8f0a-1f1e-4a5b-9d3c-2b7a5e4f8c10 não encontrado.",
+                        "campos": {}
                       }
                     }
                   }
@@ -20020,6 +22084,178 @@
         ],
         "title": "EmpresaSaida"
       },
+      "EspecificacaoLuminaria": {
+        "properties": {
+          "potencia_watts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Potencia Watts"
+          },
+          "tensao": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tensao",
+            "description": "\"127V\", \"Bivolt\"…"
+          },
+          "fluxo_luminoso_lumens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fluxo Luminoso Lumens"
+          },
+          "angulo_abertura_graus": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Angulo Abertura Graus"
+          },
+          "temperatura_cor_kelvin": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura Cor Kelvin"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 6
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip",
+            "description": "Grau de proteção, \"IP65\""
+          },
+          "base_soquete": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Soquete",
+            "description": "\"E27\", \"GU10\"…"
+          },
+          "classe_eletrica": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classe Eletrica"
+          },
+          "regulavel": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regulavel",
+            "description": "Aceita dimmer"
+          },
+          "vida_util_horas": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vida Util Horas"
+          },
+          "comprimento_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comprimento Mm"
+          },
+          "largura_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Largura Mm"
+          },
+          "altura_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altura Mm"
+          },
+          "peso_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peso Kg"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EspecificacaoLuminaria",
+        "description": "Os campos luminotécnicos da aba 2 — especificação de catálogo, não regra de\nnegócio. `extra=\"forbid\"`: um nome de campo digitado errado deve estourar 422 na hora,\nnão virar uma chave morta dentro do JSONB que ninguém mais lê.\n\nNumérico aqui é `float`, não `Decimal` — ao contrário de dinheiro (`BIGINT` em\ncentavos) e quantidade de estoque (`Numeric`), watts/mm/kg de uma especificação de\ncatálogo não têm o mesmo requisito de precisão exata, e `Decimal` dentro de um `dict`\nquebra a serialização padrão do driver para `JSONB` (`Decimal` não é serializável por\n`json.dumps` sem um encoder à parte). `float` é o tipo nativo do JSON para número."
+      },
       "EuSaida": {
         "properties": {
           "id": {
@@ -21624,6 +23860,73 @@
         ],
         "title": "GrupoCriar"
       },
+      "GrupoRelacionadoItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "nome": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Nome"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao",
+            "default": false
+          },
+          "ativo": {
+            "type": "boolean",
+            "title": "Ativo",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "GrupoRelacionadoItem",
+        "description": "Item da grade de grupos relacionados no `PUT /produtos/{id}`. Só o grupo em si —\nos itens do grupo (`ItemRelacionado`) têm rota própria, escopada por grupo."
+      },
+      "GrupoRelacionadoSaida": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao"
+          },
+          "ativo": {
+            "type": "boolean",
+            "title": "Ativo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nome",
+          "padrao",
+          "ativo"
+        ],
+        "title": "GrupoRelacionadoSaida"
+      },
       "GrupoSaida": {
         "properties": {
           "id": {
@@ -21666,6 +23969,109 @@
           "ativo"
         ],
         "title": "GrupoSaida"
+      },
+      "ItemRelacionadoCriar": {
+        "properties": {
+          "produto_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Produto Id"
+          },
+          "variante_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variante Id"
+          },
+          "quantidade": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantidade"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "produto_id"
+        ],
+        "title": "ItemRelacionadoCriar",
+        "description": "`quantidade` preenchida = kit; nula = sugestão de venda cruzada."
+      },
+      "ItemRelacionadoSaida": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "grupo_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Grupo Id"
+          },
+          "produto_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Produto Id"
+          },
+          "variante_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variante Id"
+          },
+          "quantidade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantidade"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "grupo_id",
+          "produto_id",
+          "padrao"
+        ],
+        "title": "ItemRelacionadoSaida"
       },
       "LoginEntrada": {
         "properties": {
@@ -22739,6 +25145,29 @@
             "type": "string",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Estoque Minimo"
+          },
+          "indice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indice"
+          },
+          "tipo_valor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Valor"
           }
         },
         "type": "object",
@@ -22750,8 +25179,604 @@
         "title": "PrecoSaida",
         "description": "Preço e estoque da variante naquela empresa.\n\n`preco_cents` sai como veio: inteiro em centavos. Converter para reais é trabalho da\nborda que **apresenta**, e o front do VITRA já faz isso — devolver `12.34` daqui\nreintroduziria float no caminho, que é justamente o que a convenção proíbe."
       },
+      "ProdutoAtualizar": {
+        "properties": {
+          "codigo_especial": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Especial"
+          },
+          "codigo_reduzido": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Reduzido"
+          },
+          "descricao_complementar": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao Complementar"
+          },
+          "dt_vigencia": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dt Vigencia"
+          },
+          "tipo_produto_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Produto Id"
+          },
+          "tipo_peca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Peca Id"
+          },
+          "tipo_linha_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Linha Id"
+          },
+          "classificacao_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classificacao Id"
+          },
+          "designer_modelo_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designer Modelo Id"
+          },
+          "fabrica_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabrica Id"
+          },
+          "marca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marca Id"
+          },
+          "unidade_entrada_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Entrada Id"
+          },
+          "unidade_saida_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Saida Id"
+          },
+          "qtd_entrada": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qtd Entrada",
+            "default": "1"
+          },
+          "qtd_saida": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qtd Saida",
+            "default": "1"
+          },
+          "empresa_compradora_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empresa Compradora Id"
+          },
+          "fora_de_linha": {
+            "type": "boolean",
+            "title": "Fora De Linha",
+            "default": false
+          },
+          "consultar_valor": {
+            "type": "boolean",
+            "title": "Consultar Valor",
+            "default": false
+          },
+          "sobre_medida": {
+            "type": "boolean",
+            "title": "Sobre Medida",
+            "default": false
+          },
+          "publicar_no_site": {
+            "type": "boolean",
+            "title": "Publicar No Site",
+            "default": false
+          },
+          "ncm": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ncm"
+          },
+          "cest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 7
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cest"
+          },
+          "origem": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origem"
+          },
+          "especificacao": {
+            "$ref": "#/components/schemas/EspecificacaoLuminaria"
+          },
+          "codigo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "ativo": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ativo"
+          },
+          "variantes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/VarianteItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantes"
+          },
+          "fornecedores": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProdutoFornecedorItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fornecedores"
+          },
+          "grupos_relacionados": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GrupoRelacionadoItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grupos Relacionados"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProdutoAtualizar"
+      },
       "ProdutoCriar": {
         "properties": {
+          "codigo_especial": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Especial"
+          },
+          "codigo_reduzido": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Reduzido"
+          },
+          "descricao_complementar": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao Complementar"
+          },
+          "dt_vigencia": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dt Vigencia"
+          },
+          "tipo_produto_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Produto Id"
+          },
+          "tipo_peca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Peca Id"
+          },
+          "tipo_linha_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Linha Id"
+          },
+          "classificacao_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classificacao Id"
+          },
+          "designer_modelo_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designer Modelo Id"
+          },
+          "fabrica_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabrica Id"
+          },
+          "marca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marca Id"
+          },
+          "unidade_entrada_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Entrada Id"
+          },
+          "unidade_saida_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Saida Id"
+          },
+          "qtd_entrada": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qtd Entrada",
+            "default": "1"
+          },
+          "qtd_saida": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qtd Saida",
+            "default": "1"
+          },
+          "empresa_compradora_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empresa Compradora Id"
+          },
+          "fora_de_linha": {
+            "type": "boolean",
+            "title": "Fora De Linha",
+            "default": false
+          },
+          "consultar_valor": {
+            "type": "boolean",
+            "title": "Consultar Valor",
+            "default": false
+          },
+          "sobre_medida": {
+            "type": "boolean",
+            "title": "Sobre Medida",
+            "default": false
+          },
+          "publicar_no_site": {
+            "type": "boolean",
+            "title": "Publicar No Site",
+            "default": false
+          },
+          "ncm": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ncm"
+          },
+          "cest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 7
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cest"
+          },
+          "origem": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origem"
+          },
+          "especificacao": {
+            "$ref": "#/components/schemas/EspecificacaoLuminaria"
+          },
           "codigo": {
             "type": "string",
             "maxLength": 40,
@@ -22777,7 +25802,110 @@
           "descricao"
         ],
         "title": "ProdutoCriar",
-        "description": "Esboço herdado do bake-off — a S2 acrescenta o resto das ~20 colunas do catálogo.\n\nRepare no que **não** está aqui: `tenant_id`. A empresa vem da transação (RLS,\n`SessaoEmpresa`), nunca do corpo do pedido."
+        "description": "Repare no que **não** está aqui: `tenant_id`. A empresa vem da transação (RLS,\n`SessaoEmpresa`), nunca do corpo do pedido.\n\nSem grades no `criar`: `POST` cria só o produto (`colecoes_novas` inicializa as\ncoleções vazias); variantes/fornecedores/grupos relacionados entram depois, no `PUT` —\nmesmo motivo de `Obra` não nascer junto com `Cliente`."
+      },
+      "ProdutoFornecedorItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "fornecedor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Fornecedor Id"
+          },
+          "codigo_fornecedor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Fornecedor"
+          },
+          "descricao_fornecedor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao Fornecedor"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "fornecedor_id"
+        ],
+        "title": "ProdutoFornecedorItem",
+        "description": "Item da grade de fornecedores no `PUT /produtos/{id}`."
+      },
+      "ProdutoFornecedorSaida": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "fornecedor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Fornecedor Id"
+          },
+          "codigo_fornecedor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Fornecedor"
+          },
+          "descricao_fornecedor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao Fornecedor"
+          },
+          "padrao": {
+            "type": "boolean",
+            "title": "Padrao"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fornecedor_id",
+          "padrao"
+        ],
+        "title": "ProdutoFornecedorSaida"
       },
       "ProdutoSaida": {
         "properties": {
@@ -22798,12 +25926,253 @@
             "type": "boolean",
             "title": "Ativo"
           },
+          "codigo_especial": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Especial"
+          },
+          "codigo_reduzido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Reduzido"
+          },
+          "descricao_complementar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao Complementar"
+          },
+          "dt_vigencia": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dt Vigencia"
+          },
+          "tipo_produto_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Produto Id"
+          },
+          "tipo_peca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Peca Id"
+          },
+          "tipo_linha_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Linha Id"
+          },
+          "classificacao_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classificacao Id"
+          },
+          "designer_modelo_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designer Modelo Id"
+          },
+          "fabrica_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabrica Id"
+          },
+          "marca_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marca Id"
+          },
+          "unidade_entrada_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Entrada Id"
+          },
+          "unidade_saida_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade Saida Id"
+          },
+          "qtd_entrada": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Qtd Entrada"
+          },
+          "qtd_saida": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Qtd Saida"
+          },
+          "empresa_compradora_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empresa Compradora Id"
+          },
+          "fora_de_linha": {
+            "type": "boolean",
+            "title": "Fora De Linha"
+          },
+          "consultar_valor": {
+            "type": "boolean",
+            "title": "Consultar Valor"
+          },
+          "sobre_medida": {
+            "type": "boolean",
+            "title": "Sobre Medida"
+          },
+          "publicar_no_site": {
+            "type": "boolean",
+            "title": "Publicar No Site"
+          },
+          "ncm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ncm"
+          },
+          "cest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cest"
+          },
+          "origem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origem"
+          },
+          "especificacao": {
+            "$ref": "#/components/schemas/EspecificacaoLuminaria"
+          },
           "variantes": {
             "items": {
               "$ref": "#/components/schemas/VarianteSaida"
             },
             "type": "array",
             "title": "Variantes"
+          },
+          "fornecedores": {
+            "items": {
+              "$ref": "#/components/schemas/ProdutoFornecedorSaida"
+            },
+            "type": "array",
+            "title": "Fornecedores"
+          },
+          "grupos_relacionados": {
+            "items": {
+              "$ref": "#/components/schemas/GrupoRelacionadoSaida"
+            },
+            "type": "array",
+            "title": "Grupos Relacionados"
           },
           "preco_minimo_cents": {
             "anyOf": [
@@ -22825,6 +26194,13 @@
           "codigo",
           "descricao",
           "ativo",
+          "qtd_entrada",
+          "qtd_saida",
+          "fora_de_linha",
+          "consultar_valor",
+          "sobre_medida",
+          "publicar_no_site",
+          "especificacao",
           "preco_minimo_cents"
         ],
         "title": "ProdutoSaida"
@@ -24553,6 +27929,44 @@
         "title": "UsuarioSenhaEntrada",
         "description": "Redefinição por um administrador — não pede a senha atual."
       },
+      "VarianteItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "acabamento_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Acabamento Id"
+          },
+          "tamanho_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tamanho Id"
+          },
+          "ativo": {
+            "type": "boolean",
+            "title": "Ativo",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "acabamento_id",
+          "tamanho_id"
+        ],
+        "title": "VarianteItem",
+        "description": "Item da grade de variantes no `PUT /produtos/{id}`. Sem `id` = variante nova; com\n`id` = variante existente (`substituir_conjunto` faz o diff por PK)."
+      },
       "VarianteSaida": {
         "properties": {
           "id": {
@@ -24560,13 +27974,15 @@
             "format": "uuid",
             "title": "Id"
           },
-          "acabamento": {
+          "acabamento_id": {
             "type": "string",
-            "title": "Acabamento"
+            "format": "uuid",
+            "title": "Acabamento Id"
           },
-          "tamanho": {
+          "tamanho_id": {
             "type": "string",
-            "title": "Tamanho"
+            "format": "uuid",
+            "title": "Tamanho Id"
           },
           "ativo": {
             "type": "boolean",
@@ -24586,8 +28002,8 @@
         "type": "object",
         "required": [
           "id",
-          "acabamento",
-          "tamanho",
+          "acabamento_id",
+          "tamanho_id",
           "ativo"
         ],
         "title": "VarianteSaida"

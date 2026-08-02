@@ -6,8 +6,8 @@ comum:
 
 * **Confere o domínio das FKs para `catalog_lookups`.** A FK em si é só
   `catalog_lookups.id` — nada no banco impede apontar `profissao_id` para uma linha de
-  `marca`. `_ConfereDominiosMixin` fecha essa lacuna como regra de negócio, uma vez só para
-  os três serviços que precisam dela.
+  `marca`. `ConfereDominiosMixin` (`app/modules/apoio/service.py` — dono de `DominioApoio`)
+  fecha essa lacuna como regra de negócio, compartilhado com `produtos` (S2).
 * **Confere toda referência a outra tabela global.** `employee_id` (em `Colaborador`) e
   `empresa_compradora_id` (em `FornecedorEmpresa`) são FK simples para tabela **global**
   (`employees`/`tenants`) — sem `tenant_id`, então sem RLS a proteger. Sem checagem
@@ -55,7 +55,8 @@ from app.core.listing import (
     contem_sem_acento,
     paginar,
 )
-from app.modules.apoio.models import DominioApoio, TabelaApoio
+from app.modules.apoio.models import DominioApoio
+from app.modules.apoio.service import ConfereDominiosMixin
 from app.modules.auth.models import Usuario
 from app.modules.auth.service import tem_vinculo
 from app.modules.empresa.models import Empresa
@@ -84,57 +85,6 @@ from app.modules.pessoas.schemas import (
     TransportadoraCriar,
 )
 
-
-async def _conferir_dominio(
-    session: AsyncSession, valor: uuid.UUID | None, dominio: DominioApoio, campo: str
-) -> None:
-    """`campo` aponta para `catalog_lookups.id` — a FK simples não garante *qual* domínio.
-    Confere aqui porque é regra de negócio, não algo que o banco possa checar sozinho."""
-    if valor is None:
-        return
-    dominio_real = (
-        await session.execute(select(TabelaApoio.dominio).where(TabelaApoio.id == valor))
-    ).scalar_one_or_none()
-    if dominio_real is None:
-        raise RegraDeNegocio(
-            f"'{campo}' não corresponde a um valor de apoio existente.",
-            codigo="referencia_invalida",
-            campos={campo: str(valor)},
-        )
-    if dominio_real != dominio:
-        raise RegraDeNegocio(
-            f"'{campo}' precisa ser um valor de apoio do domínio '{dominio.value}'.",
-            codigo="dominio_invalido",
-            campos={campo: str(valor)},
-        )
-
-
-class _ConfereDominiosMixin:
-    """Gancho comum a serviços com FK simples para `catalog_lookups`: a subclasse só
-    declara `dominios_por_campo`, o resto (checar em `criar` e em `atualizar`) é herdado.
-
-    Precisa vir **antes** de `BaseService` na lista de bases — é o que faz
-    `super()._antes_de_criar(...)` chamar a implementação de `BaseService` em vez de
-    recursão infinita. `self.session` também vem de `BaseService.__init__`, herdado
-    normalmente; o mypy não enxerga essa garantia através do mixin, daí os `type: ignore`.
-    """
-
-    dominios_por_campo: dict[str, DominioApoio] = {}
-
-    async def _antes_de_criar(self, valores: dict[str, Any]) -> None:
-        await super()._antes_de_criar(valores)  # type: ignore[misc]
-        await self._conferir_dominios(valores)
-
-    async def _antes_de_atualizar(self, obj: Any, valores: dict[str, Any]) -> None:
-        await super()._antes_de_atualizar(obj, valores)  # type: ignore[misc]
-        await self._conferir_dominios(valores)
-
-    async def _conferir_dominios(self, valores: dict[str, Any]) -> None:
-        for campo, dominio in self.dominios_por_campo.items():
-            if campo in valores:
-                await _conferir_dominio(self.session, valores[campo], dominio, campo)  # type: ignore[attr-defined]
-
-
 # --- Cliente ------------------------------------------------------------------
 
 _DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
@@ -146,7 +96,7 @@ _DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
 }
 
 
-class ClienteService(_ConfereDominiosMixin, BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
+class ClienteService(ConfereDominiosMixin, BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
     nome_recurso = "Cliente"
     spec = ListingSpec(
         model=Cliente,
@@ -386,7 +336,7 @@ _DOMINIOS_PROFISSIONAL_EXTERNO: dict[str, DominioApoio] = {
 
 
 class ProfissionalExternoService(
-    _ConfereDominiosMixin,
+    ConfereDominiosMixin,
     BaseService[ProfissionalExterno, ProfissionalExternoCriar, ProfissionalExternoAtualizar],
 ):
     nome_recurso = "Profissional externo"
@@ -415,7 +365,7 @@ _DOMINIOS_COLABORADOR: dict[str, DominioApoio] = {
 
 
 class ColaboradorService(
-    _ConfereDominiosMixin, BaseService[Colaborador, ColaboradorCriar, ColaboradorAtualizar]
+    ConfereDominiosMixin, BaseService[Colaborador, ColaboradorCriar, ColaboradorAtualizar]
 ):
     """`employee_id` aponta para `employees` (identidade global, sem RLS) — o serviço
     precisa conferir *na mão* que a pessoa referenciada tem vínculo com a empresa ativa,
