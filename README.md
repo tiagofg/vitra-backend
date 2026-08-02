@@ -50,7 +50,11 @@ vitra-backend/
 │   ├── conceder_runtime.sql     # põe vitra_runtime no papel vitra_app
 │   ├── init-db.sql              # papéis criados na primeira subida do container
 │   ├── exportar_openapi.py      # make openapi → openapi.json
+│   ├── exportar_postman.py      # make postman → postman/ (derivado do contrato)
 │   └── checar_migracoes.py      # cabeça única do Alembic
+├── postman/                     # gerado — não editar à mão
+│   ├── vitra.postman_collection.json
+│   └── vitra.postman_environment.json
 ├── .github/workflows/ci.yml     # qualidade, testes, migracoes, contrato
 ├── docker-compose.yml           # Postgres de desenvolvimento em localhost:5433
 ├── Makefile                     # make ajuda lista todos os alvos
@@ -144,24 +148,46 @@ errada — o RLS nunca devolve dado da outra empresa, devolve nada.
 
 ### Pelo Postman
 
-Crie um *environment* com três variáveis: `base_url` = `http://localhost:8000/api/v1`,
-`token` (vazia) e `empresa_id` (vazia).
+A collection já vem pronta no repositório, com as 99 rotas:
 
-Na requisição de login, aba **Tests**, guarde o token automaticamente:
+```bash
+make postman   # regenera a partir do openapi.json
+```
+
+No Postman: **Import → File** → `postman/vitra.postman_collection.json` e
+`postman/vitra.postman_environment.json`. Selecione o ambiente **VITRA — local** e rode a
+pasta **00 — Preparo** de cima para baixo; ela guarda `token` e `empresa_id` e preenche os
+`*_id` de exemplo. Sem isso, toda rota por empresa responde `400`.
+
+O que já vem resolvido, e que o import cru do `openapi.json` não daria:
+
+| | |
+|---|---|
+| Autenticação | Bearer `{{token}}` na collection inteira; login, refresh e `/saude` sem auth, como no contrato |
+| Empresa ativa | `X-Empresa-Id: {{empresa_id}}` nas 92 rotas que aceitam — desligue o cabeçalho para operar pela empresa que está dentro do token |
+| Encadeamento de `id` | todo `POST` guarda o `id` criado na variável que as rotas `{id}` daquele recurso consomem |
+| Corpos | os das rotas principais são os exemplos deste README, conferidos contra os schemas Pydantic |
+| Filtros | `busca`, `pagina`, `ordenar_por`… vêm como query params desabilitados, à vista sem alterar o request |
+| Testes | nenhum 5xx, envelope de erro conferido, e path com variável vazia **falha** em vez de colapsar para a listagem e passar verde |
+
+**A collection é gerada, não editada à mão** (`scripts/exportar_postman.py`) — o
+`openapi.json` é a fonte, como para o cliente do front. Editar o JSON direto perde na
+próxima geração; o que precisa mudar, muda no gerador.
+
+**Rodar a collection inteira escreve**: 53 dos 99 requests são `POST`/`PUT`/`DELETE`. Aponte
+para banco de desenvolvimento. Dentro de cada pasta o `POST` vem antes do `{id}`, então
+`PUT`/`DELETE` operam sobre o registro que a própria execução criou; e as três variáveis cujo
+`DELETE` faria estrago (`usuario_id` → `admin`, `grupo_id` → `Administradores`,
+`empresa_recurso_id` → empresa do seed) não são pré-preenchidas de propósito.
+
+Se preferir montar à mão, o essencial é: environment com `base_url`, `token` e `empresa_id`;
+**Authorization → Bearer Token** com `{{token}}` na coleção; e no login, aba **Tests**:
 
 ```javascript
 pm.environment.set("token", pm.response.json().access_token);
 ```
 
-Na coleção, aba **Authorization**, escolha **Bearer Token** e use `{{token}}` — todas as
-requisições herdam. Para as rotas por empresa, adicione o cabeçalho
-`X-Empresa-Id: {{empresa_id}}` na coleção (ou troque o token por um de
-`POST /auth/trocar-empresa`, e aí o cabeçalho é dispensável).
-
-Se preferir importar o contrato inteiro em vez de montar à mão: **Import → File →
-`openapi.json`**, e o Postman gera a coleção com todas as rotas e os corpos de exemplo.
-
-#### 1. Login — `POST {{base_url}}/auth/login`
+#### 1. Login — `POST {{base_url}}/api/v1/auth/login`
 
 ```json
 { "login": "admin", "senha": "admin12345" }
@@ -177,7 +203,7 @@ Resposta:
 }
 ```
 
-#### 2. Empresa ativa — `POST {{base_url}}/auth/trocar-empresa`
+#### 2. Empresa ativa — `POST {{base_url}}/api/v1/auth/trocar-empresa`
 
 ```json
 { "empresa_id": "3f2b8c1e-9a4d-4e5f-8b7c-1d2e3f4a5b6c" }
@@ -186,16 +212,16 @@ Resposta:
 Devolve um par de tokens novo, com a empresa dentro. Alternativa sem trocar de token: mandar
 `X-Empresa-Id: 3f2b8c1e-9a4d-4e5f-8b7c-1d2e3f4a5b6c` em cada pedido.
 
-Quem sou eu e o que posso: `GET {{base_url}}/auth/eu`.
+Quem sou eu e o que posso: `GET {{base_url}}/api/v1/auth/eu`.
 
-#### 3. Listagens — `GET {{base_url}}/produtos`
+#### 3. Listagens — `GET {{base_url}}/api/v1/produtos`
 
 Sete parâmetros, os mesmos em todo recurso: `busca` (texto livre, **ignora acento** — `sao`
 acha "São Paulo"), `busca_codigo` (exata), `pagina`, `tamanho`, `ordenar_por` (whitelist por
 recurso), `ordem` (`asc`/`desc`) e `ativo` (omitido = todos).
 
 ```
-GET {{base_url}}/produtos?busca=pendente&pagina=1&tamanho=20&ordenar_por=codigo&ordem=asc&ativo=true
+GET {{base_url}}/api/v1/produtos?busca=pendente&pagina=1&tamanho=20&ordenar_por=codigo&ordem=asc&ativo=true
 ```
 
 ```json
@@ -220,7 +246,7 @@ GET {{base_url}}/produtos?busca=pendente&pagina=1&tamanho=20&ordenar_por=codigo&
 ```
 
 Os combos das telas (`[busca +...]`, F4/F5/F6) usam `/lookup`, que devolve sempre a mesma
-forma enxuta — `GET {{base_url}}/produtos/lookup?q=pend&limit=20`:
+forma enxuta — `GET {{base_url}}/api/v1/produtos/lookup?q=pend&limit=20`:
 
 ```json
 [
@@ -233,7 +259,7 @@ forma enxuta — `GET {{base_url}}/produtos/lookup?q=pend&limit=20`:
 ]
 ```
 
-#### 4. Criar cliente — `POST {{base_url}}/clientes`
+#### 4. Criar cliente — `POST {{base_url}}/api/v1/clientes`
 
 ```json
 {
@@ -271,7 +297,7 @@ Pessoa jurídica, mesma rota:
 }
 ```
 
-Obra do cliente — `POST {{base_url}}/clientes/{cliente_id}/obras`:
+Obra do cliente — `POST {{base_url}}/api/v1/clientes/{cliente_id}/obras`:
 
 ```json
 {
@@ -283,7 +309,7 @@ Obra do cliente — `POST {{base_url}}/clientes/{cliente_id}/obras`:
 }
 ```
 
-#### 5. Criar produto — `POST {{base_url}}/produtos`
+#### 5. Criar produto — `POST {{base_url}}/api/v1/produtos`
 
 O `POST` cria só o produto; as grades (variantes, fornecedores, grupos relacionados) entram
 no `PUT`. Note que **não existe `tenant_id` no corpo** — a empresa vem da transação.
@@ -325,11 +351,11 @@ no `PUT`. Note que **não existe `tenant_id` no corpo** — a empresa vem da tra
 `potencia_wats` digitado errado estoura `422` em vez de virar chave morta no JSONB. Os campos
 `*_id` (`marca_id`, `tipo_produto_id`, `unidade_saida_id`, `acabamento_id`, `tamanho_id`…)
 apontam para a tabela de apoio: pegue os UUIDs em
-`GET {{base_url}}/apoio/{dominio}/lookup`, com `dominio` em `marca`, `tipo_produto`,
+`GET {{base_url}}/api/v1/apoio/{dominio}/lookup`, com `dominio` em `marca`, `tipo_produto`,
 `tipo_peca`, `unidade`, `acabamento`, `tamanho`, `classificacao`, `profissao`, `cargo`,
-`setor`, `estado_civil`, … (`GET {{base_url}}/apoio/dominios` lista os 19).
+`setor`, `estado_civil`, … (`GET {{base_url}}/api/v1/apoio/dominios` lista os 19).
 
-#### 6. Grades do produto — `PUT {{base_url}}/produtos/{id}`
+#### 6. Grades do produto — `PUT {{base_url}}/api/v1/produtos/{id}`
 
 As três coleções são *replace-set*: a lista enviada passa a ser a lista inteira. Item **sem
 `id`** é novo; **com `id`** é o existente sendo atualizado; ausente da lista, é removido.
@@ -366,7 +392,7 @@ Omitir a chave (ou mandar `null`) **não mexe** na coleção; mandar `[]` limpa.
 ```
 
 Itens dentro de um grupo relacionado têm rota própria —
-`POST {{base_url}}/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens`
+`POST {{base_url}}/api/v1/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens`
 (`quantidade` preenchida = kit; nula = sugestão de venda cruzada):
 
 ```json
@@ -383,13 +409,13 @@ nunca string com vírgula. Converter para reais é da borda que apresenta.
 
 #### 7. Outros corpos úteis
 
-`POST {{base_url}}/apoio/{dominio}` — cria um valor de combo na hora (`codigo` é opcional):
+`POST {{base_url}}/api/v1/apoio/{dominio}` — cria um valor de combo na hora (`codigo` é opcional):
 
 ```json
 { "descricao": "Alumínio escovado", "codigo": "escovado", "ordem": 10 }
 ```
 
-`POST {{base_url}}/usuarios`:
+`POST {{base_url}}/api/v1/usuarios`:
 
 ```json
 {
@@ -403,13 +429,13 @@ nunca string com vírgula. Converter para reais é da borda que apresenta.
 }
 ```
 
-`POST {{base_url}}/auth/alterar-senha` (o próprio usuário; responde `204`):
+`POST {{base_url}}/api/v1/auth/alterar-senha` (o próprio usuário; responde `204`):
 
 ```json
 { "senha_atual": "admin12345", "senha_nova": "outra-senha-forte" }
 ```
 
-`POST {{base_url}}/fornecedores/{fornecedor_id}/empresas-compradoras` — abre uma vigência e
+`POST {{base_url}}/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras` — abre uma vigência e
 fecha a anterior na mesma transação:
 
 ```json
@@ -423,13 +449,54 @@ fecha a anterior na mesma transação:
 `vigencia_inicio` não pode ser futura, e um índice único parcial impede duas vigências
 abertas ao mesmo tempo.
 
-`POST {{base_url}}/auth/refresh`, quando o access expirar:
+`POST {{base_url}}/api/v1/auth/refresh`, quando o access expirar:
 
 ```json
 { "refresh_token": "<jwt-de-refresh>" }
 ```
 
 Cadastro não se apaga: `DELETE /recurso/{id}` desativa (`ativo = false`) e devolve o registro.
+
+### Pela linha de comando (newman)
+
+A mesma collection roda sem abrir o Postman. Útil para varrer a API inteira depois de mexer
+em algo transversal — uma dependência do FastAPI, um handler de erro, o RBAC — e ver o que
+mudou de comportamento em 99 rotas de uma vez.
+
+```bash
+npx newman run postman/vitra.postman_collection.json
+```
+
+Além dos testes de cada request, a collection aplica dois a **todos** eles: nada de 5xx, e
+resposta de erro no envelope `{"erro": {…}}`. É uma checagem barata de uma invariante que
+nenhum teste unitário cobre de ponta a ponta.
+
+**Isto escreve no banco** — 53 dos 99 requests são `POST`/`PUT`/`DELETE`. Aponte para um
+Postgres descartável, ou rode só o que lê:
+
+```bash
+jq '.item |= map(if (.name | startswith("00")) then .
+                 else (.item |= map(select(.request.method == "GET"))) end)
+    | .item |= map(select(.item | length > 0))' \
+   postman/vitra.postman_collection.json > /tmp/vitra-leitura.json
+
+npx newman run /tmp/vitra-leitura.json
+```
+
+Mantém a pasta de preparo inteira (precisa dos dois `POST` de login e troca de empresa, que
+não tocam em cadastro) e descarta todo o resto que não é `GET`.
+
+Para outro alvo, `--env-var`:
+
+```bash
+npx newman run postman/vitra.postman_collection.json --env-var base_url=http://staging.local
+```
+
+Vermelho de **"nenhuma variável de path ficou vazia"** não é falha da API: é o recurso não
+ter nenhum registro para a rota `{id}` mirar. Numa varredura só de leitura isso é esperado
+para o que o seed não cria (colaborador, obra, centro de custo, profissional externo) e para
+`usuario_id`/`grupo_id`/`empresa_recurso_id`, que só o `POST` do recurso preenche — ver a
+descrição da collection.
 
 ## Qualidade — pre-commit e CI
 

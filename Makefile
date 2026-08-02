@@ -1,4 +1,4 @@
-.PHONY: ajuda hooks db migrar migracao migracoes runtime seed api testes \
+.PHONY: ajuda hooks db migrar migracao migracoes runtime seed api testes postman \
         lint tipos formatar qualidade checar openapi atualizar
 
 VENV ?= .venv
@@ -33,6 +33,12 @@ seed: ## Popula permissões, UFs, empresas e o usuário admin
 
 openapi: ## Publica o contrato em openapi.json — é por ele que o front gera o cliente
 	$(PY) scripts/exportar_openapi.py
+
+# Depende do contrato, e não do app: a collection é derivada do `openapi.json`, do mesmo
+# jeito que o cliente do front. Regenerar sem republicar o contrato produziria uma
+# collection da API de ontem.
+postman: openapi ## Gera a collection do Postman em postman/ a partir do contrato
+	$(PY) scripts/exportar_postman.py
 
 api: ## Sobe a API em http://localhost:8000/docs
 	$(VENV)/bin/uvicorn app.main:app --reload
