@@ -34,6 +34,7 @@ async def substituir_conjunto(
     fixos: dict[str, Any],
     usuario_id: uuid.UUID | None = None,
     campo_ordem: str | None = None,
+    campo_exclusivo: str | None = None,
 ) -> ResultadoConjunto:
     """*Replace-set* transacional das GRADEs editáveis: diff por PK, não delete-all/insert-all.
 
@@ -43,14 +44,21 @@ async def substituir_conjunto(
     `entrada` são schemas com `id` opcional: sem `id` = linha nova; com `id` = linha existente.
     O que ficou de fora da entrada é removido.
 
-    Um `flush()` por item, na ordem da `entrada` — não um só no fim. Índice único parcial
-    (ex.: "um fornecedor padrão por produto") é checado pelo Postgres por instrução, não por
-    transação: trocar qual linha carrega a bandeira exige que o `UPDATE` que a desliga seja
-    *serializado* antes do que a liga, e um `flush()` em lote deixa a ordem das instruções a
-    critério do `Session` (ordem de carga, não a ordem em que `entrada` chegou) — que pode
-    diferir da ordem que o diff pede. Achado na revisão do PR de produtos: o caminho
-    documentado de trocar o padrão (mandar os dois `id`, só movendo a bandeira) devolvia 409
-    mesmo com a entrada na ordem certa.
+    Um `flush()` por item, não um só no fim: índice único parcial (ex.: "um fornecedor
+    padrão por produto") é checado pelo Postgres por instrução, não por transação — trocar
+    qual linha carrega a bandeira exige que o `UPDATE`/`INSERT` que a desliga seja
+    *serializado* antes do que a liga.
+
+    `campo_exclusivo`: nome do campo booleano que só pode ser `True` numa linha do conjunto
+    por vez, quando o modelo tem esse tipo de índice. Informado, os itens são processados em
+    duas rodadas — quem **não** liga a bandeira primeiro, quem liga depois — para o
+    resultado não depender da ordem em que o cliente listou a `entrada`. Achado na revisão
+    do PR de produtos: processar simplesmente na ordem da `entrada` corrigia o caso em que o
+    cliente por acaso mandava "desliga" antes de "liga", mas devolvia 409 na ordem inversa
+    — o índice único parcial não é `DEFERRABLE` (só *constraint* é adiável, e não existe
+    unique constraint parcial em Postgres), então a serialização tem que vir do lado do ORM,
+    não do banco. `sorted()` é estável: dentro de cada rodada, a ordem da `entrada`
+    continua valendo — só a fronteira entre "desliga" e "liga" é reordenada.
     """
     por_id: dict[uuid.UUID, M] = {obj.id: obj for obj in existentes}
     ids_na_entrada: set[uuid.UUID] = set()
@@ -67,14 +75,20 @@ async def substituir_conjunto(
     if removidos:
         await session.flush()
 
-    criados = atualizados = 0
+    itens_preparados: list[tuple[uuid.UUID | None, dict[str, Any]]] = []
     for posicao, item in enumerate(entrada):
         valores = item.model_dump(exclude_unset=True)
         item_id = valores.pop("id", None)
         valores.update(fixos)
         if campo_ordem is not None:
             valores[campo_ordem] = posicao
+        itens_preparados.append((item_id, valores))
 
+    if campo_exclusivo is not None:
+        itens_preparados.sort(key=lambda par: bool(par[1].get(campo_exclusivo, False)))
+
+    criados = atualizados = 0
+    for item_id, valores in itens_preparados:
         if item_id is None:
             novo = model(**valores)
             if usuario_id is not None:

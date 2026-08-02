@@ -122,6 +122,10 @@ class ProdutoService(ConfereDominiosMixin, BaseService[Produto, ProdutoCriar, Pr
                 entrada=dados.fornecedores,
                 fixos={"tenant_id": obj.tenant_id, "produto_id": obj.id},
                 usuario_id=self.usuario_id,
+                # `uq_produto_fornecedor_padrao`: um padrão por produto. Sem isto, trocar
+                # qual fornecedor é o padrão funciona ou não conforme a ordem do array —
+                # achado de revisão, rodada 2.
+                campo_exclusivo="padrao",
             )
             colecoes_tocadas.append("fornecedores")
         if (

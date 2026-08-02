@@ -15,9 +15,41 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.core.permissions import CATALOGO, RECURSOS_POR_EMPRESA
 from app.core.tenancy import declarar_empresa
+from app.models import TABELAS_POR_EMPRESA
 from app.modules.auth.models import Grupo, Permissao, VinculoEmpresa
 from tests.cenario import Cenario, criar_usuario_vinculado
+
+# Único caso em que o nome do recurso do `CATALOGO` não é o nome físico da tabela — os
+# outros recursos por empresa (`filial`, `centro_custo`, `cliente`, `obra`, `fornecedor`,
+# `colaborador`, `profissional_externo`, `transportadora`) usam o mesmo nome dos dois lados.
+_TABELA_DO_RECURSO = {"produto": "products"}
+
+
+def test_recursos_por_empresa_bate_com_tabelas_por_empresa() -> None:
+    """`RECURSOS_POR_EMPRESA` (`app/core/permissions.py`) é a única das listas "o que é por
+    empresa" sem guarda contra *drift* — ao contrário de `TABELAS_POR_EMPRESA`
+    (`app/models.py`), cruzada com o catálogo do Postgres em
+    `test_toda_tabela_com_tenant_id_tem_rls_forcado`
+    (`tests/test_rls_isolamento.py`). Achado de revisão, rodada 2: um recurso novo por
+    empresa que entre no `CATALOGO` e seja esquecido em `RECURSOS_POR_EMPRESA` volta a ser
+    decidido pelos grupos globais — o mesmo furo do achado A1 (permissão de uma empresa
+    valendo pra instalação inteira), só que em silêncio, sem uma escalada óbvia para
+    denunciar.
+
+    Descobre a tabela de cada recurso do `CATALOGO` (nome igual, com a única exceção
+    conhecida `produto` → `products`) e cobra que "tabela por empresa" e "recurso por
+    empresa" sejam exatamente o mesmo conjunto — nos dois sentidos.
+    """
+    for recurso in CATALOGO:
+        tabela = _TABELA_DO_RECURSO.get(recurso, recurso)
+        tabela_e_por_empresa = tabela in TABELAS_POR_EMPRESA
+        assert (recurso in RECURSOS_POR_EMPRESA) == tabela_e_por_empresa, (
+            f"'{recurso}' (tabela '{tabela}'): tabela "
+            f"{'está' if tabela_e_por_empresa else 'não está'} em TABELAS_POR_EMPRESA, mas "
+            f"RECURSOS_POR_EMPRESA diz o contrário — atualize um dos dois."
+        )
 
 
 async def _permissao(sessao: AsyncSession, recurso: str, acao: str) -> Permissao:

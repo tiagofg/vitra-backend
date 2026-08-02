@@ -12,13 +12,17 @@ de `criado_por_id` de `cliente`/`obra`/`fornecedor`/`fornecedor_empresa`/`colabo
 em `af281e86c3d5` resolveu; não repetidas aqui, já que agora nascem na migração anterior.
 
 Nove colunas `NOT NULL` novas em `products`/`product_variants`: as seis com default seguro
-(`qtd_entrada`/`qtd_saida` = 1, as quatro flags = falso) ganham `server_default`, para não
-quebrar um banco que já tem linha em `products`. `acabamento_id`/`tamanho_id` não — não há
-default seguro para uma FK obrigatória de catálogo (inventar um seria dado fabricado, não
-backfill), então `_exigir_tabela_vazia()` cobra explicitamente uma `product_variants` vazia
-antes de tentar a coluna, em vez de deixar o Postgres estourar um `NotNullViolation` que não
-explica o motivo. Achado na revisão: sem isso a migração quebra em qualquer banco de
-desenvolvimento que já rodou o seed.
+(`qtd_entrada`/`qtd_saida` = 1, as quatro flags = falso, `COLUNAS_COM_DEFAULT_TEMPORARIO`)
+ganham `server_default` só para o `ALTER TABLE ADD COLUMN` não quebrar contra `products` não
+vazia — e o perdem logo em seguida, ainda nesta migração, porque o modelo Python não
+declara default de servidor (é `Field(default=...)` do Pydantic, na borda); deixá-lo no
+banco seria ruído para o próximo `autogenerate`, que veria uma coluna com default que o
+`MetaData` não conhece. `acabamento_id`/`tamanho_id` não ganham `server_default` nenhum —
+não há default seguro para uma FK obrigatória de catálogo (inventar um seria dado
+fabricado, não backfill), então `_exigir_tabela_vazia()` cobra explicitamente uma
+`product_variants` vazia antes de tentar a coluna, em vez de deixar o Postgres estourar um
+`NotNullViolation` que não explica o motivo. Achados na revisão (rodada 1 e 2): sem isso a
+migração quebra em qualquer banco de desenvolvimento que já rodou o seed.
 
 Revision ID: d2cf768cdc65
 Revises: af281e86c3d5
@@ -40,6 +44,17 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 TABELAS_POR_EMPRESA = ("grupo_relacionado", "item_relacionado", "produto_fornecedor")
+
+# As seis colunas `NOT NULL` novas com default seguro (ver docstring acima) — o
+# `server_default` que as cria é derrubado depois, na mesma migração.
+COLUNAS_COM_DEFAULT_TEMPORARIO = (
+    ("products", "qtd_entrada"),
+    ("products", "qtd_saida"),
+    ("products", "fora_de_linha"),
+    ("products", "consultar_valor"),
+    ("products", "sobre_medida"),
+    ("products", "publicar_no_site"),
+)
 
 PAPEL_RUNTIME = "vitra_app"
 PREDICADO = "tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid"
@@ -380,6 +395,17 @@ def upgrade() -> None:
         ondelete="RESTRICT",
     )
     # ### end Alembic commands ###
+
+    # O `server_default` das seis colunas acima existe só para o `ALTER TABLE ADD COLUMN`
+    # não quebrar contra `products` não vazia (`_exigir_tabela_vazia` já cobre as duas que
+    # não têm default seguro). O modelo Python não declara default de servidor — é
+    # `Field(default=...)` do Pydantic, na borda —, então deixar o `server_default` no
+    # banco depois de criado é ruído puro: o próximo `alembic revision --autogenerate`
+    # veria uma coluna com default que o `MetaData` não conhece e proporia removê-lo.
+    # Derrubar aqui, ainda na mesma migração, mantém schema e modelo em sincronia — sem
+    # abrir mão do valor no `INSERT` que criou a coluna.
+    for tabela, coluna in COLUNAS_COM_DEFAULT_TEMPORARIO:
+        op.alter_column(tabela, coluna, server_default=None)
 
     for tabela in TABELAS_POR_EMPRESA:
         op.create_foreign_key(

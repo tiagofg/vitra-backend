@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -244,15 +245,21 @@ async def test_grade_de_fornecedores_um_padrao_por_produto(
     assert invalido.status_code == 409, invalido.text
 
 
+@pytest.mark.parametrize("liga_primeiro", [False, True])
 async def test_grade_de_fornecedores_troca_qual_e_padrao(
-    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
+    cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa, liga_primeiro: bool
 ) -> None:
     """O caminho documentado de trocar o padrão: os dois itens já existentes, só
-    movendo a bandeira. Achado de revisão: `substituir_conjunto` fazia um só `flush()`
-    em lote, e a ordem das duas instruções `UPDATE` ficava a critério do `Session`, não
-    da ordem da entrada — o índice único parcial (`padrao`) via as duas linhas com a
-    bandeira ligada ao mesmo tempo e recusava com 409, mesmo com a entrada em ordem
-    correta."""
+    movendo a bandeira — nas duas ordens possíveis. Achado de revisão (rodada 1):
+    `substituir_conjunto` fazia um só `flush()` em lote, e a ordem das duas instruções
+    `UPDATE` ficava a critério do `Session`, não da entrada — o índice único parcial
+    (`padrao`) via as duas linhas com a bandeira ligada ao mesmo tempo e recusava com
+    409. Achado de revisão (rodada 2): a correção da rodada 1 (`flush()` por item na
+    ordem da entrada) só funcionava quando o cliente por acaso mandava "desliga" antes
+    de "liga" — a ordem inversa (`liga_primeiro=True`) continuava com 409.
+    `campo_exclusivo="padrao"` em `substituir_conjunto` resolve para as duas ordens: ele
+    processa quem desliga a bandeira antes de quem liga, **independente** da ordem da
+    `entrada`."""
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     fornecedor_a = (
         await cliente.post(
@@ -287,18 +294,13 @@ async def test_grade_de_fornecedores_troca_qual_e_padrao(
     assert primeira.status_code == 200, primeira.text
     por_fornecedor = {f["fornecedor_id"]: f["id"] for f in primeira.json()["fornecedores"]}
 
+    desliga = {"id": por_fornecedor[fornecedor_a], "fornecedor_id": fornecedor_a, "padrao": False}
+    liga = {"id": por_fornecedor[fornecedor_b], "fornecedor_id": fornecedor_b, "padrao": True}
+    ordem = [liga, desliga] if liga_primeiro else [desliga, liga]
+
     troca = await cliente.put(
         f"/api/v1/produtos/{produto_id}",
-        json={
-            "fornecedores": [
-                {
-                    "id": por_fornecedor[fornecedor_a],
-                    "fornecedor_id": fornecedor_a,
-                    "padrao": False,
-                },
-                {"id": por_fornecedor[fornecedor_b], "fornecedor_id": fornecedor_b, "padrao": True},
-            ]
-        },
+        json={"fornecedores": ordem},
         headers=cabecalho,
     )
     assert troca.status_code == 200, troca.text
