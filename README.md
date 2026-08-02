@@ -1,159 +1,62 @@
 # VITRA — Backend
 
 Substituto do SoftLux 1.0.2.1521 para a Vertz. Python 3.12 + FastAPI + SQLAlchemy 2.0 async
-sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md).
+sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md);
+as anotações de medição do bake-off, em [`notas-bakeoff.md`](notas-bakeoff.md).
 
-**Estado: S0 (Fundação), SB (Bake-off), S0.5 (Unificação), S1 (Cadastros de pessoas) e S2
-(Produtos) entregues.** As demais fases estão no plano.
-As anotações de medição do bake-off ficam em [`notas-bakeoff.md`](notas-bakeoff.md).
+## Estrutura do projeto
 
-## O que a S0 entrega
-
-| Bloco | Onde |
-|---|---|
-| Config, sessão async, envelope de erro único | `app/core/config.py`, `db.py`, `errors.py` |
-| Contrato OpenAPI com as respostas de erro declaradas | `app/core/openapi.py` |
-| `ListParams` — a barra de 7 ações das listagens | `app/core/listing.py` |
-| Numeração série+número por empresa, com `FOR UPDATE` | `app/core/numbering.py` |
-| RBAC granular recurso+ação | `app/core/permissions.py` |
-| Auditoria append-only, na mesma transação da escrita | `app/core/audit.py` |
-| Mixins de endereço, contatos, redes sociais, empresa | `app/common/mixins.py` |
-| *Replace-set* das GRADEs editáveis (diff por PK) | `app/common/child_set.py` |
-| Busca sem acento (`vitra_unaccent`, wrapper `IMMUTABLE`) | `app/core/listing.py` |
-| Auth JWT (access + refresh), argon2 | `app/modules/auth/` |
-| Empresa, filial, centro de custo | `app/modules/empresa/` |
-| Tabela de apoio genérica (19 combos) + cidade/banco/UF | `app/modules/apoio/` |
-
-## O que a SB entrega
-
-| Bloco | Onde |
-|---|---|
-| As 7 tabelas do schema compartilhado, PK composta `(tenant_id, id)` | `app/modules/produtos/`, `empresa/`, `auth/`, `apoio/` — índice em `app/models.py` |
-| `SET LOCAL app.current_tenant` no `after_begin` | `app/core/tenancy.py` |
-| Borda HTTP da empresa ativa: token, cabeçalho e vínculo | `app/modules/auth/deps.py` |
-| Migração das 7 tabelas + RLS em SQL cru (4 políticas por tabela) | `alembic/versions/b1c2d3e4f5a6_rls_multiempresa.py` |
-| Testes de isolamento, contra Postgres real e como papel de runtime | `tests/test_rls_isolamento.py` |
-| Concorrência: pedidos simultâneos de empresas diferentes | `tests/test_bakeoff_concorrencia.py` |
-| Quem pode pedir por qual empresa (401 / 400 / 403) | `tests/test_bakeoff_autorizacao.py` |
-| Listagem de produtos server-side (busca, ordenação, paginação) | `app/modules/produtos/service.py` |
-| OpenAPI publicado | `make openapi` → `openapi.json` |
-
-O módulo `bakeoff`, que era um pacote à parte, foi dissolvido nos módulos de domínio: as 7
-tabelas moram onde o assunto delas mora (`products`/`product_variants`/`product_tenant` em
-`produtos`, `tenants` em `empresa`, `employees`/`employee_company` em `auth`,
-`catalog_lookups` em `apoio`). Os testes mantêm o nome `test_bakeoff_*` porque continuam
-provando os entregáveis do bake-off.
-
-## O que a S1 entrega
-
-| Bloco | Onde |
-|---|---|
-| Cliente (com `obra`, subrecurso), fornecedor (com histórico de empresa compradora), colaborador, profissional externo, transportadora | `app/modules/pessoas/` |
-| Fábrica de router CRUD — as seis rotas repetidas (listar, lookup, criar, obter, atualizar, desativar) por recurso | `app/common/crud_router.py` |
-| Migração das 7 tabelas + RLS (mesma forma da migração do bake-off) | `alembic/versions/af281e86c3d5_pessoas_*.py` |
-| `Cpf`/`CpfCnpj` — mesma normalização de `Cnpj`, para PF | `app/common/schemas.py` |
-
-Todas por empresa (`ModeloTenant`, PK composta), com nome físico de tabela em
-**português** — `cliente`, `obra`, `fornecedor`, `colaborador` — ao contrário das 7 tabelas
-herdadas do bake-off, cujo DDL compartilhado era fixo. Ver "Convenções que valem para todas
-as fases" abaixo.
-
-`fornecedor_empresa` é histórico com vigência, não coluna: `POST
-/fornecedores/{id}/empresas-compradoras` abre uma vigência e fecha a anterior na mesma
-transação; um índice único parcial (`WHERE vigencia_fim IS NULL`) impede duas vigências
-abertas ao mesmo tempo. FKs para `catalog_lookups` (`profissao_id`, `cargo_id`, …) são
-conferidas contra o domínio esperado em `_antes_de_criar`/`_antes_de_atualizar` — a FK do
-banco garante só que o `id` existe em `catalog_lookups`, não que é do domínio certo.
-
-**Empresa compradora × vínculo pessoal — duas checagens diferentes de propósito.**
-`ColaboradorService` confere `tem_vinculo` (RLS-safe, porque a empresa checada é sempre a
-ativa do pedido). `FornecedorEmpresaService.abrir_vigencia` **não** usa `tem_vinculo` para
-`empresa_compradora_id` — confere só que é uma `Empresa` ativa (tabela global, imune a RLS).
-A primeira tentativa usou `tem_vinculo` nos dois casos e quebrou o caso cross-empresa
-legítimo sob RLS de produção (`employee_company` está sob RLS; pedir vínculo com uma empresa
-*diferente* da ativa numa mesma consulta pede a interseção de dois `tenant_id`, sempre
-vazia) — ver o comentário em `app/modules/pessoas/service.py` para o raciocínio completo.
-
-## O que a S2 entrega
-
-| Bloco | Onde |
-|---|---|
-| Produto enriquecido — ~20 colunas de catálogo, especificação JSONB validada | `app/modules/produtos/models.py`, `schemas.py` |
-| `Variante` — `acabamento`/`tamanho` viram FK para `catalog_lookups`, não texto livre | `app/modules/produtos/models.py` |
-| `produto_fornecedor`, `grupo_relacionado`/`item_relacionado` | `app/modules/produtos/models.py` |
-| As três grades do `PUT /produtos/{id}` (variantes, fornecedores, grupos relacionados) | `app/modules/produtos/service.py::_resolver_relacoes` |
-| Lookup por código próprio **e** por código do fornecedor (`EXISTS` correlacionado) | `app/modules/produtos/service.py::ProdutoService.lookup` |
-| RBAC por empresa — grupo do vínculo, quando existe, decide sozinho | `app/core/permissions.py` |
-| `ConfereDominiosMixin`/`conferir_dominio` — movidos de `pessoas` para `apoio`, compartilhados | `app/modules/apoio/service.py` |
-| Migração das 3 tabelas novas + RLS + enriquecimento de `products`/`product_variants` | `alembic/versions/d2cf768cdc65_produtos_*.py` |
-
-**RBAC por empresa fecha a lacuna que a S0.5 deixava registrada** em
-`VinculoEmpresa.grupo_id`: até aqui a coluna existia e nunca era lida por `require()`, que
-resolvia permissão só via `usuario_grupo` (global). Agora, quando o vínculo com a empresa
-ativa do pedido aponta um grupo específico, é *esse* grupo que decide — sozinho, sem união
-com os grupos globais (é o que impede "admin na ABACAXI" valer também na UVA). Sem grupo no
-vínculo (o padrão até aqui), cai no comportamento anterior, sem regressão. Ver
-`app/core/permissions.py::_permissao_por_empresa` e `tests/test_rbac_por_empresa.py` — os
-três testes ali passam pela conexão de **runtime** (`app_bakeoff`/`motor_runtime`), não pela
-de dono, porque é o único jeito de provar isso sob RLS de verdade.
-
-**Achado corrigido durante a S2 — bug pré-existente na migração da S1.** Sete FKs de
-`criado_por_id` (`cliente`, `obra`, `fornecedor`, `fornecedor_empresa`, `colaborador`,
-`profissional_externo`, `transportadora`) nunca chegaram a existir no banco: `use_alter=True`
-num `ForeignKeyConstraint` passado embutido a `op.create_table()` é descartado em silêncio
-pelo Alembic — o sinalizador só tem efeito dentro do ordenador de dependências de
-`MetaData.create_all()`, que `op.create_table()` (uma instrução DDL direta) não replica. A
-migração `af281e86c3d5` (S1, já mergeada) foi corrigida no lugar — reescrever é mais barato
-que uma migração de correção sobre um schema que ainda não tem produção. As FKs das três
-tabelas novas da S2 entram do jeito certo desde o início: `create_foreign_key()` explícito,
-depois de todas as tabelas criadas.
-
-## Multiempresa: quem recorta é o banco
-
-O recorte entre empresas **não** é um `WHERE empresa_id = ...` que alguém pode esquecer. Toda
-tabela por empresa tem `FORCE ROW LEVEL SECURITY` e quatro políticas sobre o mesmo predicado;
-a transação declara a empresa ativa e o Postgres faz o resto.
-
-Três consequências que mudam como se lê e se escreve o código aqui:
-
-- **O serviço não escreve filtro de empresa.** Se você viu um `WHERE tenant_id` numa query,
-  ou é bug ou é tabela global. Ver `app/modules/produtos/service.py`.
-- **Esquecer a empresa dá listagem vazia, nunca dado da empresa errada.** É a propriedade que
-  se está comprando. Em troca, "voltou vazio do nada" vira sintoma comum em desenvolvimento —
-  e a primeira hipótese é sempre a mesma: faltou declarar a empresa. Nas rotas, isso falha
-  com `400` na borda em vez de devolver lista vazia.
-- **A aplicação nunca conecta como dono do banco.** `vitra` roda as migrações; `vitra_runtime`
-  roda a API, sem ser dono e sem `BYPASSRLS`. Conectar como dono ou superusuário faz o
-  Postgres ignorar as políticas, e aí o RLS é decorativo.
-
-### Declarar não é autorizar
-
-As rotas por empresa pedem token **e** uma empresa ativa, nesta ordem de checagem
-(`app/modules/auth/deps.py`):
-
-| Pergunta | Falha com |
-|---|---|
-| Quem é? | `401` sem token |
-| Qual empresa? | `400` sem claim `tenant` no token e sem `X-Empresa-Id` |
-| Pode essa empresa? | `403` sem vínculo em `employee_company` |
-
-A terceira não é redundante com o RLS — é o que separa duas defesas diferentes:
-
-- o **RLS** entrega imunidade a `WHERE` esquecido no serviço;
-- a **borda HTTP** entrega imunidade a chamador malicioso.
-
-Sem a checagem de vínculo, o encadeamento seria *RLS confia no GUC → GUC confia no cabeçalho
-→ cabeçalho vem do cliente*: a política do Postgres protegeria um recorte escolhido por quem
-chama. A checagem roda **sob a própria política** — a empresa é declarada antes, então a
-consulta a `employee_company` já sai recortada, sem filtro escrito à mão.
-
-A decisão que estava aberta no plano — *claim no JWT* em vez de cabeçalho — está tomada e
-implementada: o token carrega a empresa ativa (`ClaimsToken.tenant_id`), obtida em
-`POST /auth/trocar-empresa`, e o cliente opera sem enviar cabeçalho nenhum. O `X-Empresa-Id`
-sobrevive e **tem prioridade** quando presente, para quem opera em mais de uma empresa (o
-caso da ANA SILVA) e quer trocar sem trocar de token. Os dois caminhos passam pela mesma
-checagem de vínculo: um cabeçalho forjado não vale mais que um claim forjado, porque nenhum
-dos dois é aceito sem prova em `employee_company`.
+```
+vitra-backend/
+├── app/
+│   ├── main.py                  # criar_app(): CORS, handlers de erro, montagem dos routers
+│   ├── models.py                # índice de importação dos modelos (o Alembic lê daqui)
+│   ├── core/                    # o que não é de nenhum domínio
+│   │   ├── config.py            # Settings (pydantic-settings), prefixo /api/v1
+│   │   ├── db.py                # engine async e SessionLocal
+│   │   ├── deps.py              # HTTPBearer, usuário atual, sessão
+│   │   ├── errors.py            # EnvelopeErro + pode_falhar()
+│   │   ├── openapi.py           # documentar_erros(): respostas de erro no contrato
+│   │   ├── listing.py           # ListParams, ListingSpec, Pagina, LookupItem, busca sem acento
+│   │   ├── numbering.py         # numeração série+número por empresa (FOR UPDATE)
+│   │   ├── permissions.py       # catálogo de permissões + require(recurso, acao)
+│   │   ├── audit.py             # trilha append-only, na mesma transação da escrita
+│   │   ├── security.py          # argon2, emissão e leitura de JWT
+│   │   └── tenancy.py           # SET LOCAL app.current_tenant no after_begin
+│   ├── common/                  # peças reaproveitadas por todos os módulos
+│   │   ├── base_model.py        # ModeloBase / ModeloTenant (PK composta)
+│   │   ├── base_service.py      # CRUD genérico: criar, obter, atualizar, desativar
+│   │   ├── crud_router.py       # fábrica das 6 rotas repetidas por recurso
+│   │   ├── child_set.py         # substituir_conjunto(): replace-set das grades, diff por PK
+│   │   ├── mixins.py            # endereço, contatos, redes sociais, ativo
+│   │   └── schemas.py           # Cnpj/Cpf/CpfCnpj, EnderecoCampos, ContatosCampos…
+│   └── modules/                 # um pacote por domínio: models, schemas, service, router
+│       ├── auth/                # login, refresh, trocar-empresa, usuários, grupos, permissões
+│       │   └── deps.py          # empresa do pedido: token ou X-Empresa-Id + prova de vínculo
+│       ├── empresa/             # empresa, filial, centro de custo
+│       ├── apoio/               # tabela de apoio genérica (19 domínios), UF, cidade, banco
+│       ├── pessoas/             # cliente/obra, fornecedor, colaborador, profissional, transportadora
+│       └── produtos/            # produto, variante, preço, fornecedor do produto, relacionados
+├── alembic/
+│   ├── env.py
+│   └── versions/                # migrações — RLS e políticas em SQL cru
+├── tests/
+│   ├── conftest.py              # Postgres 17 descartável (Testcontainers) + migrações
+│   ├── banco.py                 # motores: dono e papel de runtime
+│   ├── cenario.py               # fixtures de empresa, usuário, produto…
+│   └── test_*.py
+├── scripts/
+│   ├── seed.py                  # permissões, UFs, cidades, bancos, empresas, admin, exemplos
+│   ├── conceder_runtime.sql     # põe vitra_runtime no papel vitra_app
+│   ├── init-db.sql              # papéis criados na primeira subida do container
+│   ├── exportar_openapi.py      # make openapi → openapi.json
+│   └── checar_migracoes.py      # cabeça única do Alembic
+├── .github/workflows/ci.yml     # qualidade, testes, migracoes, contrato
+├── docker-compose.yml           # Postgres de desenvolvimento em localhost:5433
+├── Makefile                     # make ajuda lista todos os alvos
+├── openapi.json                 # contrato publicado — é por ele que o front gera o cliente
+└── pyproject.toml
+```
 
 ## Subir o ambiente
 
@@ -169,27 +72,364 @@ make runtime                      # põe vitra_runtime no papel vitra_app — um
 .venv/bin/uvicorn app.main:app --reload
 ```
 
-OpenAPI em <http://localhost:8000/docs>. O seed cria `admin` / `admin12345` — **troque a senha.**
+Ou, pelos alvos do `Makefile` (`make ajuda` lista todos):
+
+```bash
+make db && make migrar && make runtime && make seed && make api
+```
+
+A API sobe em <http://localhost:8000>, com o Swagger em <http://localhost:8000/docs> e o
+health check em <http://localhost:8000/saude>. O seed cria `admin` / `admin12345` —
+**troque a senha.**
 
 Se o `docker` pedir permissão, ou você entra no grupo (`sudo usermod -aG docker $USER`, exige
 relogar) ou roda com `sudo docker compose up -d db`.
 
-### O banco compartilhado do bake-off
+## Testar a API
 
-`vitra_bakeoff` (PostgreSQL 17 no Neon) é usado **ao mesmo tempo** pelos devs das outras duas
-stacks. Daí as regras não serem burocracia:
+Todas as rotas vivem sob `/api/v1`. Duas coisas valem para praticamente todas elas:
 
-- **Não criar, alterar ou apagar tabela lá.** A estrutura é fixa. A migração se testa
-  localmente, em Postgres descartável, recriando a mesma estrutura.
-- **Nenhum teste escreve lá.** Hoje nenhum teste da suíte sequer aponta para lá: tudo roda
-  contra o Postgres descartável. Teste novo que dependa do Neon é só leitura, e precisa ser
-  pulável sem a variável — no CI ela vem vazia (`VITRA_BAKEOFF_DATABASE_URL: ""`). Um teste
-  que suja o dado sujou para os outros dois times.
-- A string de conexão traz senha real e vive **só no `.env`**. O `.env.example` documenta a
-  variável (`VITRA_BAKEOFF_DATABASE_URL`), nunca o valor.
-- O Neon suspende o banco após alguns minutos ocioso: a primeira conexão depois disso leva
-  1–2 s. Não é queda.
-- Bagunçou o dado: avisar o Henrique, que reseta em ~1 min.
+1. **Token JWT** no `Authorization: Bearer <access_token>`, obtido em `POST /api/v1/auth/login`.
+2. **Empresa ativa**, porque as tabelas por empresa são recortadas pelo Postgres (RLS) a partir
+   dela. Vem de um claim no token (`POST /api/v1/auth/trocar-empresa`) **ou** do cabeçalho
+   `X-Empresa-Id`, que tem prioridade quando presente. Sem nenhum dos dois, a resposta é `400`;
+   com uma empresa sem vínculo, `403`.
+
+Erro sai sempre no mesmo envelope:
+
+```json
+{
+  "erro": {
+    "codigo": "empresa_nao_declarada",
+    "mensagem": "Nenhuma empresa ativa foi declarada no pedido.",
+    "campos": {}
+  }
+}
+```
+
+### Pelo Swagger (`/docs`)
+
+Com a API de pé, o Swagger UI está em <http://localhost:8000/docs> — em produção ele sai do
+ar de propósito (`/docs` e `/openapi.json` são `None` quando `VITRA_AMBIENTE=producao`; o
+contrato é consumido pelo `openapi.json` versionado).
+
+1. Abra `POST /api/v1/auth/login`, **Try it out**, e envie:
+
+   ```json
+   { "login": "admin", "senha": "admin12345" }
+   ```
+
+   A resposta traz `access_token` e `refresh_token`.
+
+2. Clique em **Authorize** (cadeado no topo), cole **só** o `access_token` — o esquema é
+   `HTTPBearer`, o Swagger põe o `Bearer ` na frente — e confirme.
+
+3. Descubra o `id` da empresa em `GET /api/v1/empresas/lookup` (o seed cria `VERTZ` e
+   `VIAHF`). Copie o `id` da VERTZ.
+
+4. Escolha a empresa ativa, de um dos dois jeitos:
+
+   - **Token com a empresa dentro** (recomendado no Swagger): `POST /api/v1/auth/trocar-empresa`
+     com `{ "empresa_id": "<id-da-vertz>" }`, e refaça o **Authorize** com o `access_token`
+     novo. A partir daí nenhuma rota precisa de cabeçalho.
+   - **Cabeçalho por pedido**: deixe o token como está e preencha o campo `x-empresa-id`, que
+     aparece no formulário de toda rota por empresa.
+
+5. Agora `GET /api/v1/produtos`, `GET /api/v1/clientes`, `POST /api/v1/produtos` etc.
+   respondem. Se vier `400 empresa_nao_declarada`, o passo 4 não pegou; se vier `403`, o
+   usuário não tem vínculo com aquela empresa.
+
+**Listagem vazia sem erro é sintoma conhecido:** ou o filtro não casou, ou a empresa ativa é a
+errada — o RLS nunca devolve dado da outra empresa, devolve nada.
+
+### Pelo Postman
+
+Crie um *environment* com três variáveis: `base_url` = `http://localhost:8000/api/v1`,
+`token` (vazia) e `empresa_id` (vazia).
+
+Na requisição de login, aba **Tests**, guarde o token automaticamente:
+
+```javascript
+pm.environment.set("token", pm.response.json().access_token);
+```
+
+Na coleção, aba **Authorization**, escolha **Bearer Token** e use `{{token}}` — todas as
+requisições herdam. Para as rotas por empresa, adicione o cabeçalho
+`X-Empresa-Id: {{empresa_id}}` na coleção (ou troque o token por um de
+`POST /auth/trocar-empresa`, e aí o cabeçalho é dispensável).
+
+Se preferir importar o contrato inteiro em vez de montar à mão: **Import → File →
+`openapi.json`**, e o Postman gera a coleção com todas as rotas e os corpos de exemplo.
+
+#### 1. Login — `POST {{base_url}}/auth/login`
+
+```json
+{ "login": "admin", "senha": "admin12345" }
+```
+
+Resposta:
+
+```json
+{
+  "access_token": "<jwt-de-acesso>",
+  "refresh_token": "<jwt-de-refresh>",
+  "token_type": "bearer"
+}
+```
+
+#### 2. Empresa ativa — `POST {{base_url}}/auth/trocar-empresa`
+
+```json
+{ "empresa_id": "3f2b8c1e-9a4d-4e5f-8b7c-1d2e3f4a5b6c" }
+```
+
+Devolve um par de tokens novo, com a empresa dentro. Alternativa sem trocar de token: mandar
+`X-Empresa-Id: 3f2b8c1e-9a4d-4e5f-8b7c-1d2e3f4a5b6c` em cada pedido.
+
+Quem sou eu e o que posso: `GET {{base_url}}/auth/eu`.
+
+#### 3. Listagens — `GET {{base_url}}/produtos`
+
+Sete parâmetros, os mesmos em todo recurso: `busca` (texto livre, **ignora acento** — `sao`
+acha "São Paulo"), `busca_codigo` (exata), `pagina`, `tamanho`, `ordenar_por` (whitelist por
+recurso), `ordem` (`asc`/`desc`) e `ativo` (omitido = todos).
+
+```
+GET {{base_url}}/produtos?busca=pendente&pagina=1&tamanho=20&ordenar_por=codigo&ordem=asc&ativo=true
+```
+
+```json
+{
+  "itens": [
+    {
+      "id": "8c1e3f2b-4d5e-4a6f-9b7c-2d3e4f5a6b7c",
+      "codigo": "PEND001",
+      "descricao": "Pendente Aurora",
+      "ativo": true,
+      "preco_minimo_cents": 45900,
+      "variantes": [],
+      "fornecedores": [],
+      "grupos_relacionados": []
+    }
+  ],
+  "total": 1,
+  "pagina": 1,
+  "tamanho": 20,
+  "paginas": 1
+}
+```
+
+Os combos das telas (`[busca +...]`, F4/F5/F6) usam `/lookup`, que devolve sempre a mesma
+forma enxuta — `GET {{base_url}}/produtos/lookup?q=pend&limit=20`:
+
+```json
+[
+  {
+    "id": "8c1e3f2b-4d5e-4a6f-9b7c-2d3e4f5a6b7c",
+    "codigo": "PEND001",
+    "label": "Pendente Aurora",
+    "extras": {}
+  }
+]
+```
+
+#### 4. Criar cliente — `POST {{base_url}}/clientes`
+
+```json
+{
+  "codigo": "CLI010",
+  "nome": "Maria Andrade",
+  "tipo_pessoa": "fisica",
+  "cpf_cnpj": "123.456.789-00",
+  "rg_ie": "34.567.890-1",
+  "dt_nascimento": "1985-04-17",
+  "telefone": "1133334444",
+  "celular": "11988887777",
+  "email": "maria.andrade@example.com",
+  "endereco_cep": "01310-100",
+  "endereco_logradouro": "Avenida Paulista",
+  "endereco_numero": "1000",
+  "endereco_complemento": "Conjunto 82",
+  "endereco_bairro": "Bela Vista",
+  "observacao": "Indicada pelo escritório ADR."
+}
+```
+
+`cpf_cnpj` pode ir com máscara — a borda tira a pontuação e sobe a caixa antes de gravar.
+`tipo_pessoa` é `fisica` (CPF, 11 dígitos) ou `juridica` (CNPJ, 14); mandar um documento do
+tamanho errado dá `422`.
+
+Pessoa jurídica, mesma rota:
+
+```json
+{
+  "codigo": "CLI011",
+  "nome": "Studio ADR Arquitetura Ltda",
+  "tipo_pessoa": "juridica",
+  "cpf_cnpj": "12.345.678/0001-90",
+  "email": "contato@studioadr.example.com"
+}
+```
+
+Obra do cliente — `POST {{base_url}}/clientes/{cliente_id}/obras`:
+
+```json
+{
+  "nome": "Residência Alphaville",
+  "endereco_cep": "06474-000",
+  "endereco_logradouro": "Alameda Rio Negro",
+  "endereco_numero": "500",
+  "endereco_bairro": "Alphaville"
+}
+```
+
+#### 5. Criar produto — `POST {{base_url}}/produtos`
+
+O `POST` cria só o produto; as grades (variantes, fornecedores, grupos relacionados) entram
+no `PUT`. Note que **não existe `tenant_id` no corpo** — a empresa vem da transação.
+
+```json
+{
+  "codigo": "PEND010",
+  "descricao": "Pendente Aurora 40cm",
+  "descricao_complementar": "Cúpula em alumínio, cabo têxtil de 1,5 m",
+  "codigo_reduzido": "PA40",
+  "ncm": "94051100",
+  "cest": "2110300",
+  "origem": "0",
+  "qtd_entrada": 1,
+  "qtd_saida": 1,
+  "fora_de_linha": false,
+  "consultar_valor": false,
+  "sobre_medida": false,
+  "publicar_no_site": true,
+  "especificacao": {
+    "potencia_watts": 12.5,
+    "tensao": "Bivolt",
+    "fluxo_luminoso_lumens": 1100,
+    "angulo_abertura_graus": 36,
+    "temperatura_cor_kelvin": 3000,
+    "ip": "IP20",
+    "base_soquete": "GU10",
+    "regulavel": true,
+    "vida_util_horas": 25000,
+    "comprimento_mm": 400,
+    "largura_mm": 400,
+    "altura_mm": 1200,
+    "peso_kg": 2.4
+  }
+}
+```
+
+`especificacao` é validada campo a campo e recusa nome desconhecido (`extra="forbid"`) — um
+`potencia_wats` digitado errado estoura `422` em vez de virar chave morta no JSONB. Os campos
+`*_id` (`marca_id`, `tipo_produto_id`, `unidade_saida_id`, `acabamento_id`, `tamanho_id`…)
+apontam para a tabela de apoio: pegue os UUIDs em
+`GET {{base_url}}/apoio/{dominio}/lookup`, com `dominio` em `marca`, `tipo_produto`,
+`tipo_peca`, `unidade`, `acabamento`, `tamanho`, `classificacao`, `profissao`, `cargo`,
+`setor`, `estado_civil`, … (`GET {{base_url}}/apoio/dominios` lista os 19).
+
+#### 6. Grades do produto — `PUT {{base_url}}/produtos/{id}`
+
+As três coleções são *replace-set*: a lista enviada passa a ser a lista inteira. Item **sem
+`id`** é novo; **com `id`** é o existente sendo atualizado; ausente da lista, é removido.
+Omitir a chave (ou mandar `null`) **não mexe** na coleção; mandar `[]` limpa.
+
+```json
+{
+  "descricao": "Pendente Aurora 40cm",
+  "variantes": [
+    {
+      "acabamento_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "tamanho_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+      "ativo": true
+    },
+    {
+      "id": "9d0e1f2a-3b4c-4d5e-6f7a-8b9c0d1e2f3a",
+      "acabamento_id": "3c4d5e6f-7a8b-4c9d-0e1f-2a3b4c5d6e7f",
+      "tamanho_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+      "ativo": true
+    }
+  ],
+  "fornecedores": [
+    {
+      "fornecedor_id": "4d5e6f7a-8b9c-4d0e-1f2a-3b4c5d6e7f8a",
+      "codigo_fornecedor": "LUM-AUR-40",
+      "descricao_fornecedor": "Pendente Aurora 40 preto",
+      "padrao": true
+    }
+  ],
+  "grupos_relacionados": [
+    { "nome": "Acessórios sugeridos", "padrao": true, "ativo": true }
+  ]
+}
+```
+
+Itens dentro de um grupo relacionado têm rota própria —
+`POST {{base_url}}/produtos/{produto_id}/grupos-relacionados/{grupo_id}/itens`
+(`quantidade` preenchida = kit; nula = sugestão de venda cruzada):
+
+```json
+{
+  "produto_id": "7f8a9b0c-1d2e-4f3a-4b5c-6d7e8f9a0b1c",
+  "variante_id": "9d0e1f2a-3b4c-4d5e-6f7a-8b9c0d1e2f3a",
+  "quantidade": "2.000",
+  "padrao": true
+}
+```
+
+Dinheiro é sempre **inteiro em centavos** (`preco_cents: 45900` é R$ 459,00) — nunca float,
+nunca string com vírgula. Converter para reais é da borda que apresenta.
+
+#### 7. Outros corpos úteis
+
+`POST {{base_url}}/apoio/{dominio}` — cria um valor de combo na hora (`codigo` é opcional):
+
+```json
+{ "descricao": "Alumínio escovado", "codigo": "escovado", "ordem": 10 }
+```
+
+`POST {{base_url}}/usuarios`:
+
+```json
+{
+  "login": "ana.silva",
+  "nome": "Ana Silva",
+  "senha": "senha-forte-123",
+  "email": "ana.silva@vertz.com.br",
+  "superusuario": false,
+  "limite_desconto_pct": "10.0000",
+  "grupo_ids": ["5e6f7a8b-9c0d-4e1f-2a3b-4c5d6e7f8a9b"]
+}
+```
+
+`POST {{base_url}}/auth/alterar-senha` (o próprio usuário; responde `204`):
+
+```json
+{ "senha_atual": "admin12345", "senha_nova": "outra-senha-forte" }
+```
+
+`POST {{base_url}}/fornecedores/{fornecedor_id}/empresas-compradoras` — abre uma vigência e
+fecha a anterior na mesma transação:
+
+```json
+{
+  "empresa_compradora_id": "3f2b8c1e-9a4d-4e5f-8b7c-1d2e3f4a5b6c",
+  "vigencia_inicio": "2026-08-01",
+  "motivo": "Centralização de compras na matriz"
+}
+```
+
+`vigencia_inicio` não pode ser futura, e um índice único parcial impede duas vigências
+abertas ao mesmo tempo.
+
+`POST {{base_url}}/auth/refresh`, quando o access expirar:
+
+```json
+{ "refresh_token": "<jwt-de-refresh>" }
+```
+
+Cadastro não se apaga: `DELETE /recurso/{id}` desativa (`ativo = false`) e devolve o registro.
 
 ## Qualidade — pre-commit e CI
 
@@ -243,7 +483,7 @@ make atualizar   # sobe tudo para a última estável e reconfere
 ## Testes
 
 ```bash
-.venv/bin/pytest -q
+.venv/bin/pytest -q      # ou: make testes
 ```
 
 Cada execução **sobe um Postgres 17 descartável** (Testcontainers) e aplica as migrações,
@@ -258,43 +498,3 @@ ou superusuário faz todos passarem sem provar nada.
 Precisa de Docker. Para iterar sem subir container a cada rodada, aponte
 `VITRA_TESTE_URL_EXTERNA` para um Postgres já de pé — o schema continua sendo recriado a
 partir das migrações.
-
-## Convenções que valem para todas as fases
-
-- **Router só orquestra.** Regra de negócio no service; nenhum `select()` em router.
-- **Tabela por empresa tem PK composta `(tenant_id, id)`**, e toda FK entre tabelas por
-  empresa carrega o `tenant_id` junto. É o que torna *fisicamente impossível* ligar o preço
-  da empresa A ao produto da empresa B — o `INSERT` falha, não é validação de serviço.
-- **Nome de tabela e de coluna em português** para o que nasce neste projeto (`cliente`,
-  `filial`, `centro_custo`…). As 7 tabelas herdadas do bake-off (`products`,
-  `product_variants`, `product_tenant`, `tenants`, `employees`, `employee_company`,
-  `catalog_lookups`) continuam em inglês — o DDL do banco compartilhado do Neon era fixo
-  quando elas nasceram, e reescrevê-lo não paga. Classe ORM, serviço, rota e mensagem de
-  erro **sempre em português**, que é a língua do domínio.
-- **Dinheiro é `BIGINT` em centavos** (`price_cents`): R$ 12,34 é `1234`. Nunca float, nunca
-  `Numeric`. Converter para reais é da borda que apresenta, nunca do banco. Nenhuma tabela
-  guarda dinheiro em `Numeric` desde a S0.5.
-- **Quantidade** `Numeric(14,3)` com `CHECK >= 0`; **percentual** `Numeric(9,4)`.
-- **CNPJ/CPF** `varchar(14)`, caixa alta e **sem máscara** — já pronto para o CNPJ
-  alfanumérico, que vale a partir de 31/07/2026. `Cnpj`/`Cpf`/`CpfCnpj`
-  (`app/common/schemas.py`) tiram a máscara e sobem a caixa na borda.
-- **Cadastro não se apaga** — `DELETE /recurso/{id}` desativa (`ativo = false`). Documentos de
-  venda vão **cancelar** (`POST /{id}/cancelar`), a partir da S4.
-- **Erro sai sempre no mesmo envelope**: `{"erro": {"codigo", "mensagem", "campos"}}` —
-  modelado em `EnvelopeErro` (`app/core/errors.py`) e publicado no contrato, porque o front
-  gera o cliente a partir do OpenAPI e precisa conhecer também os caminhos de erro.
-- **Falha se declara onde ela nasce.** A dependência que exige token, empresa ou permissão
-  declara a sua com `pode_falhar(...)`, e a rota herda pelo grafo do FastAPI; a rota só
-  declara o que apenas o serviço sabe (404, 409, regra de negócio). Nenhuma rota escreve
-  `responses=` à mão — 55 listas paralelas divergiriam na primeira rota nova.
-- **Toda rota mutante** passa por `Depends(require(recurso, acao))`, e o par precisa estar no
-  catálogo de `app/core/permissions.py` — errar o nome estoura na importação, não em produção.
-- **`ordenar_por` é whitelist** por recurso, declarada no `ListingSpec`.
-- **Busca textual ignora acento** — use `contem_sem_acento()` de `app/core/listing.py`, nunca
-  `.ilike()` cru: `?busca=sao` precisa achar "São Paulo".
-
-## Fora de escopo (decisão registrada no plano)
-
-Sem motor fiscal e sem NFe — `ncm`/`cest`/`origem` são gravados no produto (S2), sem regra
-`NCM × Operação × CFOP × UF` nem emissão. Financeiro, CRM, metas, ganhos sobre vendas e
-relatórios ficam para depois desta entrega.
