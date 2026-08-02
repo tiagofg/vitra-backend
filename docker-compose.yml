@@ -1,8 +1,16 @@
 services:
   db:
-    # 17, igual ao alvo. Desenvolver noutra major que a de produção é dívida gratuita —
-    # e aqui o assunto é política de segurança, onde o comportamento por versão importa.
-    image: postgres:18-alpine
+    # 17, igual ao alvo — e igual ao que a suíte sobe (`tests/banco.py`) e ao serviço do CI
+    # (`.github/workflows/ci.yml`). Desenvolver noutra major que a de produção é dívida
+    # gratuita — e aqui o assunto é política de segurança, onde o comportamento por versão
+    # importa.
+    #
+    # Não subir sozinho: o bump para `18-alpine` (5a16a98) passou porque o Dependabot só
+    # troca a linha da imagem — o CI usa o seu próprio serviço, os testes usam Testcontainers,
+    # e nenhum dos dois lê este arquivo. Quem quebra é o volume `vitra-db-data` na máquina de
+    # quem já tem dado: a imagem 18+ recusa o layout antigo em `/var/lib/postgresql/data` e o
+    # container sai com exit 1. Subir de major aqui é migração de dado, não bump de imagem.
+    image: postgres:17-alpine
     container_name: vitra-db
     environment:
       POSTGRES_USER: vitra
