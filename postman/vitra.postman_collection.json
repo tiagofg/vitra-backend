@@ -1,0 +1,4701 @@
+{
+  "info": {
+    "_postman_id": "0a262382-7024-5d36-8f54-f2f54aa9a90e",
+    "name": "VITRA API",
+    "description": "Collection gerada a partir do `openapi.json` por `scripts/exportar_postman.py`\n(`make postman`). **Não edite à mão** — a próxima geração desfaz.\n\n## Como usar\n\n1. Suba a API (`make api`) com o banco migrado e semeado (`make migrar`, `make runtime`,\n   `make seed`).\n2. Importe também `vitra.postman_environment.json` e selecione o ambiente, ou use os\n   valores default das variáveis da própria collection.\n3. Rode a pasta **00 — Preparo** de cima para baixo. Ela guarda `token` e `empresa_id`;\n   sem isso, toda rota por empresa responde `400 empresa_nao_declarada`.\n\n## O que já vem resolvido\n\n- **Autenticação**: Bearer `{{token}}` na collection inteira. Login, refresh e `/saude` são\n  os únicos sem auth, como no contrato.\n- **Empresa ativa**: as rotas por empresa mandam `X-Empresa-Id: {{empresa_id}}`. Se preferir\n  operar pela empresa que está dentro do token, desligue o cabeçalho — os dois caminhos\n  passam pela mesma checagem de vínculo.\n- **Encadeamento de id**: todo `POST` que cria guarda o `id` na variável do recurso, então\n  criar um cliente já deixa `GET/PUT/DELETE /clientes/{{cliente_id}}` prontos.\n- **Filtros de listagem** (`busca`, `pagina`, `ordenar_por`…) vêm como query params\n  desabilitados: ficam à vista sem alterar o request.\n\n## Antes de rodar a collection inteira\n\nEla **escreve**: são 53 requests `POST`/`PUT`/`DELETE` de 99. Rodar tudo cria cadastros de\nexemplo e desativa o que acabou de criar (`DELETE` aqui é `ativo = false`, não apaga).\nAponte para um banco de desenvolvimento, nunca para dado que importa.\n\nDentro de cada pasta o `POST` vem antes do `{id}`, então o alvo de `PUT`/`DELETE` é o\nregistro que a própria execução criou — não o do seed. As três variáveis cujo `DELETE`\nfaria estrago (`usuario_id` → `admin`, `grupo_id` → `Administradores`, `empresa_recurso_id`\n→ empresa do seed) **não** são pré-preenchidas: só o `POST` do recurso as define. Pular o\n`POST` e ir direto no `DELETE` dá vermelho de path vazio, que é o comportamento desejado.\n\n## O que você ainda precisa preencher\n\nO resto das variáveis `*_id` é preenchido pelo passo 5 do preparo. Sobra o que não tem\nlookup nem `POST` na frente — nesses casos o vermelho de \"variável de path vazia\" diz qual\né. Os UUIDs de apoio saem de `GET /api/v1/apoio/{dominio}/lookup`.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Vale para todo request da collection.",
+          "pm.test('não é 5xx', function () {",
+          "    pm.expect(pm.response.code).to.be.below(500);",
+          "});",
+          "",
+          "// Uma variável de path vazia não deixa a URL inválida — ela some, e",
+          "// `/produtos/{{produto_id}}` vira `/produtos/`, que é a *listagem* e responde 200.",
+          "// Sem esta checagem, 'obter' e 'desativar' passariam verdes sem nunca terem sido",
+          "// exercidos. Falhar aqui é o ponto: diz qual variável falta preencher.",
+          "pm.test('nenhuma variável de path ficou vazia', function () {",
+          "    const vazios = (pm.request.url.path || []).filter(function (s) {",
+          "        return s === '' || s === null || s === undefined;",
+          "    });",
+          "    pm.expect(vazios.length, 'segmento vazio na URL — rode a pasta 00 — Preparo').to.eql(0);",
+          "});",
+          "",
+          "// Envelope único de erro (app/core/errors.py). Se um dia um handler responder erro",
+          "// fora deste formato, o front que gera cliente a partir do contrato quebra — e é",
+          "// aqui que aparece primeiro.",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('erro sai no envelope {erro:{codigo,mensagem,campos}}', function () {",
+          "        const corpo = pm.response.json();",
+          "        pm.expect(corpo).to.have.property('erro');",
+          "        pm.expect(corpo.erro).to.have.property('codigo');",
+          "        pm.expect(corpo.erro).to.have.property('mensagem');",
+          "        pm.expect(corpo.erro).to.have.property('campos');",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "empresa_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "acabamento_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apoio_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "banco_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "centro_custo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cidade_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cliente_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "colaborador_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "employee_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "empresa_recurso_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "filial_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fornecedor_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "grupo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "grupo_relacionado_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "item_relacionado_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "obra_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "produto_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "profissional_externo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tamanho_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transportadora_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "uf_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "usuario_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 — Preparo (rode primeiro)",
+      "description": "Executar esta pasta de cima para baixo deixa `token` e `empresa_id` preenchidos; sem isso, toda rota por empresa responde 400.\n\nNo Collection Runner, rodar a collection inteira já começa por aqui.",
+      "item": [
+        {
+          "name": "1. Login (guarda o token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Credenciais do seed. Troque a senha em qualquer ambiente real.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"admin\",\n  \"senha\": \"admin12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login respondeu 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const corpo = pm.response.json();",
+                  "pm.collectionVariables.set('token', corpo.access_token);",
+                  "pm.collectionVariables.set('refresh_token', corpo.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Empresas disponíveis (guarda a empresa_id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas/lookup",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas",
+                "lookup"
+              ]
+            },
+            "description": "`/empresas` é tabela global — responde sem empresa ativa, e é por isso que este passo consegue vir antes de declarar qual empresa é a ativa."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lookup respondeu 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const itens = pm.response.json();",
+                  "if (itens.length > 0) {",
+                  "    // O seed cria VERTZ e VIAHF; fica com a VERTZ quando ela aparece.",
+                  "    const vertz = itens.find(function (i) { return i.codigo === 'VERTZ'; });",
+                  "    const escolhida = vertz || itens[0];",
+                  "    pm.collectionVariables.set('empresa_id', escolhida.id);",
+                  "    console.log('empresa ativa =', escolhida.label, escolhida.id);",
+                  "} else {",
+                  "    console.warn('nenhuma empresa — rodou scripts/seed.py?');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Trocar empresa (token passa a carregar a empresa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/trocar-empresa",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "trocar-empresa"
+              ]
+            },
+            "description": "Opcional: com o token carregando a empresa, o cabeçalho `X-Empresa-Id` deixa de ser necessário. A collection manda os dois — o cabeçalho tem prioridade, e ambos passam pela mesma checagem de vínculo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empresa_id\": \"{{empresa_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('trocou de empresa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const corpo = pm.response.json();",
+                  "pm.collectionVariables.set('token', corpo.access_token);",
+                  "pm.collectionVariables.set('refresh_token', corpo.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Quem sou eu (confere permissões)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/eu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "eu"
+              ]
+            },
+            "description": "Mostra grupos e permissões efetivas — o diagnóstico de todo 403."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('token vale', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Capturar ids de exemplo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/saude",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "saude"
+              ]
+            },
+            "description": "Preenche `produto_id`, `cliente_id`, `acabamento_id` e companhia com o primeiro registro que já existe no banco, varrendo os `/lookup` num leque de `pm.sendRequest`.\n\nSem isto, as rotas `{id}` saem com a variável vazia — e aí a URL `/produtos/{{produto_id}}` colapsa para `/produtos/`, que é a listagem e responde 200. O request passaria verde sem ter exercido nada.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Um leque de sendRequest: um request só do Postman, várias consultas.",
+                  "const fontes = [",
+                  "    ['produto_id', '/api/v1/produtos/lookup'],",
+                  "    ['cliente_id', '/api/v1/clientes/lookup'],",
+                  "    ['fornecedor_id', '/api/v1/fornecedores/lookup'],",
+                  "    ['colaborador_id', '/api/v1/colaboradores/lookup'],",
+                  "    ['profissional_externo_id', '/api/v1/profissionais-externos/lookup'],",
+                  "    ['transportadora_id', '/api/v1/transportadoras/lookup'],",
+                  "    ['cidade_id', '/api/v1/cidades/lookup'],",
+                  "    ['banco_id', '/api/v1/bancos/lookup'],",
+                  "    ['acabamento_id', '/api/v1/apoio/acabamento/lookup'],",
+                  "    ['tamanho_id', '/api/v1/apoio/tamanho/lookup'],",
+                  "    ['marca_id', '/api/v1/apoio/marca/lookup'],",
+                  "    ['apoio_id', '/api/v1/apoio/marca/lookup'],",
+                  "    ['uf_id', '/api/v1/ufs'],",
+                  "    ['employee_id', '/api/v1/usuarios'],",
+                  "    ['permissao_id', '/api/v1/permissoes'],",
+                  "    ['filial_id', '/api/v1/filiais'],",
+                  "    ['centro_custo_id', '/api/v1/centros-custo'],",
+                  "];",
+                  "",
+                  "const base = pm.collectionVariables.get('base_url');",
+                  "const token = pm.collectionVariables.get('token');",
+                  "const empresa = pm.collectionVariables.get('empresa_id');",
+                  "let pendentes = fontes.length;",
+                  "const faltando = [];",
+                  "",
+                  "fontes.forEach(function (par) {",
+                  "    const variavel = par[0];",
+                  "    const caminho = par[1];",
+                  "    pm.sendRequest({",
+                  "        url: base + caminho,",
+                  "        method: 'GET',",
+                  "        header: {",
+                  "            'Authorization': 'Bearer ' + token,",
+                  "            'X-Empresa-Id': empresa",
+                  "        }",
+                  "    }, function (erro, resposta) {",
+                  "        pendentes -= 1;",
+                  "        if (!erro && resposta && resposta.code === 200) {",
+                  "            const corpo = resposta.json();",
+                  "            // `/lookup` devolve lista; listagem devolve `Pagina` com `itens`.",
+                  "            const registros = Array.isArray(corpo) ? corpo : (corpo.itens || []);",
+                  "            if (registros.length > 0 && registros[0].id) {",
+                  "                pm.collectionVariables.set(variavel, registros[0].id);",
+                  "            } else {",
+                  "                faltando.push(variavel);",
+                  "            }",
+                  "        } else {",
+                  "            faltando.push(variavel);",
+                  "        }",
+                  "        if (pendentes === 0 && faltando.length > 0) {",
+                  "            console.warn('sem registro para: ' + faltando.join(', ') +",
+                  "                ' — crie um pelo POST do recurso, ou rode scripts/seed.py');",
+                  "        }",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('preparo concluído', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Autenticação (5)",
+      "item": [
+        {
+          "name": "Alterar Senha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/alterar-senha",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "alterar-senha"
+              ]
+            },
+            "description": "Alterar Senha",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senha_atual\": \"admin12345\",\n  \"senha_nova\": \"outra-senha-forte\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Eu",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/eu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "eu"
+              ]
+            },
+            "description": "Eu"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"admin\",\n  \"senha\": \"admin12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Refresh",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Trocar Empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/trocar-empresa",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "trocar-empresa"
+              ]
+            },
+            "description": "Reemite o token com `empresa_id` como claim, depois de provar o vínculo.\n\nO front descobre as empresas disponíveis por `GET /empresas` (global, sem RLS) antes\nde chamar isto — não há vínculo nenhum a provar para *listar* empresas, só para\n*operar* numa delas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empresa_id\": \"{{empresa_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Acesso — usuários, grupos, permissões (15)",
+      "item": [
+        {
+          "name": "Listar Grupos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Grupos"
+          }
+        },
+        {
+          "name": "Criar Grupo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos"
+              ]
+            },
+            "description": "Criar Grupo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('grupo_id', corpo.id);",
+                  "        console.log('grupo_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter Grupo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos/{{grupo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos",
+                "{{grupo_id}}"
+              ]
+            },
+            "description": "Obter Grupo"
+          }
+        },
+        {
+          "name": "Atualizar Grupo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos/{{grupo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos",
+                "{{grupo_id}}"
+              ]
+            },
+            "description": "Atualizar Grupo",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Grupo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos/{{grupo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos",
+                "{{grupo_id}}"
+              ]
+            },
+            "description": "Desativação lógica: cadastro nunca sai do banco."
+          }
+        },
+        {
+          "name": "Listar Permissoes Do Grupo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos/{{grupo_id}}/permissoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos",
+                "{{grupo_id}}",
+                "permissoes"
+              ]
+            },
+            "description": "Listar Permissoes Do Grupo"
+          }
+        },
+        {
+          "name": "Definir Permissoes Do Grupo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/grupos/{{grupo_id}}/permissoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "grupos",
+                "{{grupo_id}}",
+                "permissoes"
+              ]
+            },
+            "description": "`grupo:editar` é, na prática, quase-admin: quem tem essa permissão pode conceder ao\npróprio grupo (ou a qualquer outro) todo o catálogo — inclusive `usuario:*` — sem\npassar pelas travas de escalada que protegem `superusuario` em `UsuarioService`. Não é\na mesma lacuna: aquelas travam *fabricar/promover um superusuário*, esta não trava\n*acumular, via grupo, o mesmo poder efetivo*. É o próximo alvo natural de uma trava\nequivalente, não corrigido agora.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissao_ids\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar Permissoes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/permissoes?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "permissoes"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Permissoes"
+          }
+        },
+        {
+          "name": "Listar Usuarios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Usuarios"
+          }
+        },
+        {
+          "name": "Criar Usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios"
+              ]
+            },
+            "description": "Criar Usuario",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"ana.silva\",\n  \"nome\": \"Ana Silva\",\n  \"senha\": \"senha-forte-123\",\n  \"email\": \"ana.silva@vertz.com.br\",\n  \"superusuario\": false,\n  \"limite_desconto_pct\": \"10.0000\",\n  \"grupo_ids\": [\n    \"{{grupo_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('usuario_id', corpo.id);",
+                  "        console.log('usuario_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter Usuario",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios/{{usuario_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "{{usuario_id}}"
+              ]
+            },
+            "description": "Obter Usuario"
+          }
+        },
+        {
+          "name": "Atualizar Usuario",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios/{{usuario_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "{{usuario_id}}"
+              ]
+            },
+            "description": "Atualizar Usuario",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Usuario",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios/{{usuario_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "{{usuario_id}}"
+              ]
+            },
+            "description": "Desativar Usuario"
+          }
+        },
+        {
+          "name": "Reativar Usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios/{{usuario_id}}/reativar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "{{usuario_id}}",
+                "reativar"
+              ]
+            },
+            "description": "Sem isto, um usuário desativado por engano — ou pela falta da trava que este mesmo\ncommit corrige — só voltava com `UPDATE` direto no banco. `BaseService.reativar()` já\nexistia; faltava um caminho até ele."
+          }
+        },
+        {
+          "name": "Redefinir Senha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usuarios/{{usuario_id}}/senha",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "{{usuario_id}}",
+                "senha"
+              ]
+            },
+            "description": "Redefinir Senha",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senha_nova\": \"texto\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Empresa, filial e centro de custo (16)",
+      "item": [
+        {
+          "name": "Listar Centros Custo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/centros-custo?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "centros-custo"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Centros Custo"
+          }
+        },
+        {
+          "name": "Criar Centro Custo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/centros-custo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "centros-custo"
+              ]
+            },
+            "description": "Criar Centro Custo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"nome\": \"Exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('centro_custo_id', corpo.id);",
+                  "        console.log('centro_custo_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter Centro Custo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/centros-custo/{{centro_custo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "centros-custo",
+                "{{centro_custo_id}}"
+              ]
+            },
+            "description": "Obter Centro Custo"
+          }
+        },
+        {
+          "name": "Atualizar Centro Custo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/centros-custo/{{centro_custo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "centros-custo",
+                "{{centro_custo_id}}"
+              ]
+            },
+            "description": "Atualizar Centro Custo",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Centro Custo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/centros-custo/{{centro_custo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "centros-custo",
+                "{{centro_custo_id}}"
+              ]
+            },
+            "description": "Desativar Centro Custo"
+          }
+        },
+        {
+          "name": "Listar Empresas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Empresas"
+          }
+        },
+        {
+          "name": "Criar Empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas"
+              ]
+            },
+            "description": "Criar Empresa",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"razao_social\": \"Empresa Exemplo Ltda\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('empresa_recurso_id', corpo.id);",
+                  "        console.log('empresa_recurso_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Empresas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Empresas"
+          }
+        },
+        {
+          "name": "Obter Empresa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas/{{empresa_recurso_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas",
+                "{{empresa_recurso_id}}"
+              ]
+            },
+            "description": "Obter Empresa"
+          }
+        },
+        {
+          "name": "Atualizar Empresa",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas/{{empresa_recurso_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas",
+                "{{empresa_recurso_id}}"
+              ]
+            },
+            "description": "Atualizar Empresa",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Empresa",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/empresas/{{empresa_recurso_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "empresas",
+                "{{empresa_recurso_id}}"
+              ]
+            },
+            "description": "Desativar Empresa"
+          }
+        },
+        {
+          "name": "Listar Filiais",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/filiais?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "filiais"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Filiais"
+          }
+        },
+        {
+          "name": "Criar Filial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/filiais",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "filiais"
+              ]
+            },
+            "description": "Criar Filial",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"nome\": \"Exemplo\",\n  \"matriz\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('filial_id', corpo.id);",
+                  "        console.log('filial_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter Filial",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/filiais/{{filial_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "filiais",
+                "{{filial_id}}"
+              ]
+            },
+            "description": "Obter Filial"
+          }
+        },
+        {
+          "name": "Atualizar Filial",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/filiais/{{filial_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "filiais",
+                "{{filial_id}}"
+              ]
+            },
+            "description": "Atualizar Filial",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Filial",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/filiais/{{filial_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "filiais",
+                "{{filial_id}}"
+              ]
+            },
+            "description": "Desativar Filial"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tabelas de apoio, UF, cidade e banco (16)",
+      "item": [
+        {
+          "name": "Listar Dominios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/dominios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "dominios"
+              ]
+            },
+            "description": "Os 19 combos das telas, um por domínio."
+          }
+        },
+        {
+          "name": "Listar Apoio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Apoio"
+          }
+        },
+        {
+          "name": "Criar Apoio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca"
+              ]
+            },
+            "description": "É o botão `...` ao lado do combo: cria o valor sem sair da tela.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descricao\": \"Alumínio escovado\",\n  \"codigo\": \"escovado\",\n  \"ordem\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('apoio_id', corpo.id);",
+                  "        console.log('apoio_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Apoio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Apoio"
+          }
+        },
+        {
+          "name": "Obter Apoio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca/{{apoio_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca",
+                "{{apoio_id}}"
+              ]
+            },
+            "description": "Obter Apoio"
+          }
+        },
+        {
+          "name": "Atualizar Apoio",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca/{{apoio_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca",
+                "{{apoio_id}}"
+              ]
+            },
+            "description": "Atualizar Apoio",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Apoio",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/apoio/marca/{{apoio_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "apoio",
+                "marca",
+                "{{apoio_id}}"
+              ]
+            },
+            "description": "Desativar Apoio"
+          }
+        },
+        {
+          "name": "Listar Bancos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bancos?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bancos"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Bancos"
+          }
+        },
+        {
+          "name": "Criar Banco",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bancos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bancos"
+              ]
+            },
+            "description": "Criar Banco",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD00\",\n  \"nome\": \"Exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('banco_id', corpo.id);",
+                  "        console.log('banco_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Bancos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bancos/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bancos",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Bancos"
+          }
+        },
+        {
+          "name": "Atualizar Banco",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bancos/{{banco_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bancos",
+                "{{banco_id}}"
+              ]
+            },
+            "description": "Atualizar Banco",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar Cidades",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cidades?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cidades"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Cidades"
+          }
+        },
+        {
+          "name": "Criar Cidade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cidades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cidades"
+              ]
+            },
+            "description": "Criar Cidade",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uf_id\": \"{{uf_id}}\",\n  \"nome\": \"Exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('cidade_id', corpo.id);",
+                  "        console.log('cidade_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Cidades",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cidades/lookup?q=&uf=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cidades",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "uf",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Cidades"
+          }
+        },
+        {
+          "name": "Atualizar Cidade",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cidades/{{cidade_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cidades",
+                "{{cidade_id}}"
+              ]
+            },
+            "description": "Atualizar Cidade",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar Ufs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ufs?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ufs"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Ufs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Produtos (9)",
+      "item": [
+        {
+          "name": "Listar Produto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Produto"
+          }
+        },
+        {
+          "name": "Criar Produto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos"
+              ]
+            },
+            "description": "Criar Produto",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"PEND010\",\n  \"descricao\": \"Pendente Aurora 40cm\",\n  \"descricao_complementar\": \"Cúpula em alumínio, cabo têxtil de 1,5 m\",\n  \"codigo_reduzido\": \"PA40\",\n  \"ncm\": \"94051100\",\n  \"cest\": \"2110300\",\n  \"origem\": \"0\",\n  \"qtd_entrada\": 1,\n  \"qtd_saida\": 1,\n  \"fora_de_linha\": false,\n  \"consultar_valor\": false,\n  \"sobre_medida\": false,\n  \"publicar_no_site\": true,\n  \"especificacao\": {\n    \"potencia_watts\": 12.5,\n    \"tensao\": \"Bivolt\",\n    \"fluxo_luminoso_lumens\": 1100,\n    \"angulo_abertura_graus\": 36,\n    \"temperatura_cor_kelvin\": 3000,\n    \"ip\": \"IP20\",\n    \"base_soquete\": \"GU10\",\n    \"regulavel\": true,\n    \"vida_util_horas\": 25000,\n    \"comprimento_mm\": 400,\n    \"largura_mm\": 400,\n    \"altura_mm\": 1200,\n    \"peso_kg\": 2.4\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('produto_id', corpo.id);",
+                  "        console.log('produto_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Produto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Produto"
+          }
+        },
+        {
+          "name": "Obter Produto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}"
+              ]
+            },
+            "description": "Obter Produto"
+          }
+        },
+        {
+          "name": "Atualizar Produto",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}"
+              ]
+            },
+            "description": "Atualizar Produto",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descricao\": \"Pendente Aurora 40cm\",\n  \"variantes\": [\n    {\n      \"acabamento_id\": \"{{acabamento_id}}\",\n      \"tamanho_id\": \"{{tamanho_id}}\",\n      \"ativo\": true\n    }\n  ],\n  \"fornecedores\": [\n    {\n      \"fornecedor_id\": \"{{fornecedor_id}}\",\n      \"codigo_fornecedor\": \"LUM-AUR-40\",\n      \"descricao_fornecedor\": \"Pendente Aurora 40 preto\",\n      \"padrao\": true\n    }\n  ],\n  \"grupos_relacionados\": [\n    {\n      \"nome\": \"Acessórios sugeridos\",\n      \"padrao\": true,\n      \"ativo\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Produto",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}"
+              ]
+            },
+            "description": "Desativar Produto"
+          }
+        },
+        {
+          "name": "Listar Itens Relacionados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}/grupos-relacionados/{{grupo_relacionado_id}}/itens",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}",
+                "grupos-relacionados",
+                "{{grupo_relacionado_id}}",
+                "itens"
+              ]
+            },
+            "description": "Listar Itens Relacionados"
+          }
+        },
+        {
+          "name": "Criar Item Relacionado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}/grupos-relacionados/{{grupo_relacionado_id}}/itens",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}",
+                "grupos-relacionados",
+                "{{grupo_relacionado_id}}",
+                "itens"
+              ]
+            },
+            "description": "Criar Item Relacionado",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"produto_id\": \"{{produto_id}}\",\n  \"quantidade\": \"2.000\",\n  \"padrao\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('item_relacionado_id', corpo.id);",
+                  "        console.log('item_relacionado_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remover Item Relacionado",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/produtos/{{produto_id}}/grupos-relacionados/{{grupo_relacionado_id}}/itens/{{item_relacionado_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "produtos",
+                "{{produto_id}}",
+                "grupos-relacionados",
+                "{{grupo_relacionado_id}}",
+                "itens",
+                "{{item_relacionado_id}}"
+              ]
+            },
+            "description": "Remover Item Relacionado"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pessoas — cliente, fornecedor, colaborador… (37)",
+      "item": [
+        {
+          "name": "Listar Cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Cliente"
+          }
+        },
+        {
+          "name": "Criar Cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes"
+              ]
+            },
+            "description": "Criar Cliente",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"CLI010\",\n  \"nome\": \"Maria Andrade\",\n  \"tipo_pessoa\": \"fisica\",\n  \"cpf_cnpj\": \"123.456.789-00\",\n  \"rg_ie\": \"34.567.890-1\",\n  \"dt_nascimento\": \"1985-04-17\",\n  \"telefone\": \"1133334444\",\n  \"celular\": \"11988887777\",\n  \"email\": \"maria.andrade@example.com\",\n  \"endereco_cep\": \"01310-100\",\n  \"endereco_logradouro\": \"Avenida Paulista\",\n  \"endereco_numero\": \"1000\",\n  \"endereco_complemento\": \"Conjunto 82\",\n  \"endereco_bairro\": \"Bela Vista\",\n  \"observacao\": \"Indicada pelo escritório ADR.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('cliente_id', corpo.id);",
+                  "        console.log('cliente_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Cliente"
+          }
+        },
+        {
+          "name": "Listar Obras",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}/obras?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}",
+                "obras"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Obras"
+          }
+        },
+        {
+          "name": "Criar Obra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}/obras",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}",
+                "obras"
+              ]
+            },
+            "description": "Confere que o cliente existe (e é desta empresa — RLS) antes de pendurar a obra nele.\n`ClienteService.obter` é quem levanta o 404; `ObraService` não sabe validar `Cliente`,\nque é outro recurso.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Residência Alphaville\",\n  \"endereco_cep\": \"06474-000\",\n  \"endereco_logradouro\": \"Alameda Rio Negro\",\n  \"endereco_numero\": \"500\",\n  \"endereco_bairro\": \"Alphaville\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('obra_id', corpo.id);",
+                  "        console.log('obra_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter Obra",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}/obras/{{obra_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}",
+                "obras",
+                "{{obra_id}}"
+              ]
+            },
+            "description": "Obter Obra"
+          }
+        },
+        {
+          "name": "Atualizar Obra",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}/obras/{{obra_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}",
+                "obras",
+                "{{obra_id}}"
+              ]
+            },
+            "description": "Atualizar Obra",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Obra",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}/obras/{{obra_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}",
+                "obras",
+                "{{obra_id}}"
+              ]
+            },
+            "description": "Desativar Obra"
+          }
+        },
+        {
+          "name": "Obter Cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}"
+              ]
+            },
+            "description": "Obter Cliente"
+          }
+        },
+        {
+          "name": "Atualizar Cliente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}"
+              ]
+            },
+            "description": "Atualizar Cliente",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Cliente",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clientes/{{cliente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "clientes",
+                "{{cliente_id}}"
+              ]
+            },
+            "description": "Desativar Cliente"
+          }
+        },
+        {
+          "name": "Listar Colaborador",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Colaborador"
+          }
+        },
+        {
+          "name": "Criar Colaborador",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores"
+              ]
+            },
+            "description": "Criar Colaborador",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employee_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('colaborador_id', corpo.id);",
+                  "        console.log('colaborador_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Colaborador",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Colaborador"
+          }
+        },
+        {
+          "name": "Obter Colaborador",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores/{{colaborador_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores",
+                "{{colaborador_id}}"
+              ]
+            },
+            "description": "Obter Colaborador"
+          }
+        },
+        {
+          "name": "Atualizar Colaborador",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores/{{colaborador_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores",
+                "{{colaborador_id}}"
+              ]
+            },
+            "description": "Atualizar Colaborador",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Colaborador",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/colaboradores/{{colaborador_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "colaboradores",
+                "{{colaborador_id}}"
+              ]
+            },
+            "description": "Desativar Colaborador"
+          }
+        },
+        {
+          "name": "Listar Fornecedor",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Fornecedor"
+          }
+        },
+        {
+          "name": "Criar Fornecedor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores"
+              ]
+            },
+            "description": "Criar Fornecedor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"razao_social\": \"Empresa Exemplo Ltda\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('fornecedor_id', corpo.id);",
+                  "        console.log('fornecedor_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Fornecedor",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Fornecedor"
+          }
+        },
+        {
+          "name": "Listar Historico Empresa Compradora",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/{{fornecedor_id}}/empresas-compradoras",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "{{fornecedor_id}}",
+                "empresas-compradoras"
+              ]
+            },
+            "description": "Listar Historico Empresa Compradora"
+          }
+        },
+        {
+          "name": "Abrir Empresa Compradora",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/{{fornecedor_id}}/empresas-compradoras",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "{{fornecedor_id}}",
+                "empresas-compradoras"
+              ]
+            },
+            "description": "Abrir Empresa Compradora",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empresa_compradora_id\": \"{{empresa_id}}\",\n  \"vigencia_inicio\": \"2026-08-01\",\n  \"motivo\": \"Centralização de compras na matriz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Obter Fornecedor",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/{{fornecedor_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "{{fornecedor_id}}"
+              ]
+            },
+            "description": "Obter Fornecedor"
+          }
+        },
+        {
+          "name": "Atualizar Fornecedor",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/{{fornecedor_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "{{fornecedor_id}}"
+              ]
+            },
+            "description": "Atualizar Fornecedor",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Fornecedor",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fornecedores/{{fornecedor_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fornecedores",
+                "{{fornecedor_id}}"
+              ]
+            },
+            "description": "Desativar Fornecedor"
+          }
+        },
+        {
+          "name": "Listar Profissional Externo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Profissional Externo"
+          }
+        },
+        {
+          "name": "Criar Profissional Externo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos"
+              ]
+            },
+            "description": "Criar Profissional Externo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"nome\": \"Exemplo\",\n  \"tipo_pessoa\": \"fisica\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('profissional_externo_id', corpo.id);",
+                  "        console.log('profissional_externo_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Profissional Externo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Profissional Externo"
+          }
+        },
+        {
+          "name": "Obter Profissional Externo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos/{{profissional_externo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos",
+                "{{profissional_externo_id}}"
+              ]
+            },
+            "description": "Obter Profissional Externo"
+          }
+        },
+        {
+          "name": "Atualizar Profissional Externo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos/{{profissional_externo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos",
+                "{{profissional_externo_id}}"
+              ]
+            },
+            "description": "Atualizar Profissional Externo",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Profissional Externo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profissionais-externos/{{profissional_externo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profissionais-externos",
+                "{{profissional_externo_id}}"
+              ]
+            },
+            "description": "Desativar Profissional Externo"
+          }
+        },
+        {
+          "name": "Listar Transportadora",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras?busca=&busca_codigo=&pagina=1&tamanho=50&ordenar_por=&ordem=asc&ativo=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras"
+              ],
+              "query": [
+                {
+                  "key": "busca",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Texto livre nos campos de busca do recurso"
+                },
+                {
+                  "key": "busca_codigo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca exata por código"
+                },
+                {
+                  "key": "pagina",
+                  "value": "1",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tamanho",
+                  "value": "50",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordenar_por",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ordem",
+                  "value": "asc",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "ativo",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Nulo = todos"
+                }
+              ]
+            },
+            "description": "Listar Transportadora"
+          }
+        },
+        {
+          "name": "Criar Transportadora",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras"
+              ]
+            },
+            "description": "Criar Transportadora",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"COD001\",\n  \"nome\": \"Exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const corpo = pm.response.json();",
+                  "    if (corpo && corpo.id) {",
+                  "        pm.collectionVariables.set('transportadora_id', corpo.id);",
+                  "        console.log('transportadora_id =', corpo.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup Transportadora",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/lookup?q=&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Lookup Transportadora"
+          }
+        },
+        {
+          "name": "Obter Transportadora",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/{{transportadora_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "{{transportadora_id}}"
+              ]
+            },
+            "description": "Obter Transportadora"
+          }
+        },
+        {
+          "name": "Atualizar Transportadora",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/{{transportadora_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "{{transportadora_id}}"
+              ]
+            },
+            "description": "Atualizar Transportadora",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Transportadora",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Empresa-Id",
+                "value": "{{empresa_id}}",
+                "description": "Empresa ativa. Tem prioridade sobre o claim do token. Desligue este cabeçalho se preferir operar pela empresa que está dentro do token (POST /auth/trocar-empresa)."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/{{transportadora_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "{{transportadora_id}}"
+              ]
+            },
+            "description": "Desativar Transportadora"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Infra (1)",
+      "item": [
+        {
+          "name": "Saude",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/saude",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "saude"
+              ]
+            },
+            "description": "Saude",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
