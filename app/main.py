@@ -14,8 +14,10 @@ from app.core.openapi import documentar_erros
 from app.modules.apoio.router import routers as routers_apoio
 from app.modules.auth.router import routers as routers_auth
 from app.modules.empresa.router import routers as routers_empresa
+from app.modules.estoque.router import routers as routers_estoque
 from app.modules.pessoas.router import routers as routers_pessoas
 from app.modules.produtos.router import routers as routers_produtos
+from app.modules.vendas.router import routers as routers_vendas
 
 DESCRICAO = """
 Backend do VITRA — núcleo comercial, substituto do SoftLux.
@@ -104,6 +106,8 @@ def criar_app() -> FastAPI:
         *routers_apoio,
         *routers_produtos,
         *routers_pessoas,
+        *routers_estoque,
+        *routers_vendas,
     ]:
         api.include_router(router)
     app.include_router(api)

@@ -3,7 +3,7 @@
 Busca textual, ordenação e paginação **no servidor**, devolvendo `{itens, total, pagina,
 tamanho, paginas}` — o contrato que o TanStack Table server-side do front espera.
 
-Os casos de borda testados aqui estão nos dados de propósito: preço `0`, estoque `0` e
+Os casos de borda testados aqui estão nos dados de propósito: preço `0` e
 registros `active = false`. São os três que um `or` distraído colapsa — `0 or None` dá
 `None`, e "sem preço" vira "custa zero" sem ninguém perceber.
 """
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.tenancy import declarar_empresa
 from app.modules.apoio.models import DominioApoio
-from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
+from app.modules.produtos.models import Produto, Variante, VarianteEmpresa
 from tests.cenario import Cenario, apoio_id
 
 
@@ -34,7 +34,7 @@ async def catalogo_de_borda(motor_runtime: AsyncEngine, cenario: Cenario) -> dic
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
 
-        # Preço zero e estoque zero — não é "sem preço", é preço zero.
+        # Preço zero — não é "sem preço", é preço zero.
         zerado = Produto(
             tenant_id=cenario.abacaxi,
             codigo=itens["grafite"],
@@ -80,11 +80,10 @@ async def catalogo_de_borda(motor_runtime: AsyncEngine, cenario: Cenario) -> dic
         await sessao.flush()
 
         sessao.add(
-            ProdutoEmpresa(
+            VarianteEmpresa(
                 tenant_id=cenario.abacaxi,
                 variante_id=variante_zerada.id,
                 preco_cents=0,
-                estoque=Decimal("0.000"),
                 estoque_minimo=Decimal("0.000"),
             )
         )
@@ -133,7 +132,10 @@ async def test_preco_zero_e_diferente_de_sem_preco(
     zerado = por_codigo[catalogo_de_borda["grafite"]]
     assert zerado["preco_minimo_cents"] == 0
     assert zerado["variantes"][0]["preco"]["preco_cents"] == 0
-    assert Decimal(zerado["variantes"][0]["preco"]["estoque"]) == 0
+    # Saldo não sai mais aqui: virou `stock_balances`, por variante **e** local
+    # (`GET /estoque/saldos/{variante_id}`). O que continua valendo neste teste é a
+    # distinção que ele existe para provar: preço `0` é diferente de preço ausente.
+    assert "estoque" not in zerado["variantes"][0]["preco"]
 
     mudo = por_codigo[catalogo_de_borda["sem_preco"]]
     assert mudo["preco_minimo_cents"] is None

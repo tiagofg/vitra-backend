@@ -21,10 +21,20 @@ from app.models import TABELAS_POR_EMPRESA
 from app.modules.auth.models import Grupo, Permissao, VinculoEmpresa
 from tests.cenario import Cenario, criar_usuario_vinculado
 
-# Único caso em que o nome do recurso do `CATALOGO` não é o nome físico da tabela — os
-# outros recursos por empresa (`filial`, `centro_custo`, `cliente`, `obra`, `fornecedor`,
-# `colaborador`, `profissional_externo`, `transportadora`) usam o mesmo nome dos dois lados.
-_TABELA_DO_RECURSO = {"produto": "products"}
+# Recursos cujo nome no `CATALOGO` não é o nome físico da tabela. O resto (`filial`,
+# `centro_custo`, `obra`, `colaborador`, `transportadora`) usa o mesmo nome dos dois lados.
+#
+# `estoque` é o caso especial: é um recurso que governa **três** tabelas
+# (`stock_balances`/`stock_movements` de leitura e escrita, `stock_locations` só de
+# leitura), então mapeia para uma delas — qualquer uma serve para esta checagem, porque as
+# três são por empresa e entram ou saem de `TABELAS_POR_EMPRESA` juntas.
+_TABELA_DO_RECURSO = {
+    "produto": "products",
+    "parceiro": "partners",
+    "local_estoque": "stock_locations",
+    "estoque": "stock_balances",
+    "orcamento": "quotes",
+}
 
 
 def test_recursos_por_empresa_bate_com_tabelas_por_empresa() -> None:

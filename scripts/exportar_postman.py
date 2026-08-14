@@ -54,7 +54,9 @@ ROTULOS = {
     "empresa": "Empresa, filial e centro de custo",
     "apoio": "Tabelas de apoio, UF, cidade e banco",
     "produtos": "Produtos",
-    "pessoas": "Pessoas — cliente, fornecedor, colaborador…",
+    "pessoas": "Pessoas — parceiro (cliente/fornecedor/profissional), colaborador…",
+    "estoque": "Estoque — locais, saldos e extrato de movimentos",
+    "vendas": "Vendas — orçamento, ambientes e itens",
     "infra": "Infra",
 }
 
@@ -84,12 +86,13 @@ RECURSOS = {
     # os três `{id}` para `{{produto_id}}` — a rota vira uma URL que nunca casa.
     "grupos-relacionados": "grupo_relacionado_id",
     "itens": "item_relacionado_id",
-    "clientes": "cliente_id",
+    "parceiros": "parceiro_id",
     "obras": "obra_id",
-    "fornecedores": "fornecedor_id",
     "colaboradores": "colaborador_id",
-    "profissionais-externos": "profissional_externo_id",
     "transportadoras": "transportadora_id",
+    "locais": "local_estoque_id",
+    "movimentos": "movimento_id",
+    "orcamentos": "orcamento_id",
 }
 
 # Corpos das rotas que alguém realmente exercita à mão. São os mesmos exemplos do README,
@@ -103,10 +106,13 @@ CORPOS = {
         "senha_atual": "admin12345",
         "senha_nova": "outra-senha-forte",
     },
-    ("post", "/api/v1/clientes"): {
-        "codigo": "CLI010",
-        "nome": "Maria Andrade",
+    ("post", "/api/v1/parceiros"): {
+        "codigo": "PAR010",
+        "razao_social": "Maria Andrade",
         "tipo_pessoa": "fisica",
+        "e_cliente": True,
+        "e_fornecedor": False,
+        "e_profissional": False,
         "cpf_cnpj": "123.456.789-00",
         "rg_ie": "34.567.890-1",
         "dt_nascimento": "1985-04-17",
@@ -120,7 +126,7 @@ CORPOS = {
         "endereco_bairro": "Bela Vista",
         "observacao": "Indicada pelo escritório ADR.",
     },
-    ("post", "/api/v1/clientes/{cliente_id}/obras"): {
+    ("post", "/api/v1/parceiros/{parceiro_id}/obras"): {
         "nome": "Residência Alphaville",
         "endereco_cep": "06474-000",
         "endereco_logradouro": "Alameda Rio Negro",

@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.core.tenancy import declarar_empresa
 from app.modules.auth.models import Usuario
 from app.modules.empresa.models import Empresa
-from app.modules.pessoas.models import Fornecedor, FornecedorEmpresa
+from app.modules.pessoas.models import FornecedorEmpresa, Parceiro
 from app.modules.pessoas.service import FornecedorEmpresaService
-from tests.cenario import Cenario, criar_usuario_vinculado
+from tests.cenario import Cenario, criar_usuario_vinculado, parceiro_json
 
 
 def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, str]:
@@ -23,8 +23,8 @@ async def _criar_fornecedor(
     cliente: AsyncClient, cabecalho: dict[str, str], codigo: str = "FOR001"
 ) -> str:
     resposta = await cliente.post(
-        "/api/v1/fornecedores",
-        json={"codigo": codigo, "razao_social": "Lumini Distribuidora"},
+        "/api/v1/parceiros",
+        json=parceiro_json(codigo, "Lumini Distribuidora"),
         headers=cabecalho,
     )
     assert resposta.status_code == 201, resposta.text
@@ -38,7 +38,7 @@ async def test_abrir_vigencia_sem_historico_anterior(
     fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
 
     aberta = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={
             "empresa_compradora_id": str(empresa.id),
             "vigencia_inicio": "2026-01-01",
@@ -52,7 +52,7 @@ async def test_abrir_vigencia_sem_historico_anterior(
     assert corpo["empresa_compradora_id"] == str(empresa.id)
 
     historico = await cliente.get(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras", headers=cabecalho
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras", headers=cabecalho
     )
     assert historico.status_code == 200
     assert len(historico.json()) == 1
@@ -67,14 +67,14 @@ async def test_abrir_nova_vigencia_fecha_a_anterior(
     fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
 
     primeira = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": "2026-01-01"},
         headers=cabecalho,
     )
     assert primeira.status_code == 201, primeira.text
 
     segunda = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": "2026-06-01"},
         headers=cabecalho,
     )
@@ -83,7 +83,7 @@ async def test_abrir_nova_vigencia_fecha_a_anterior(
 
     historico = (
         await cliente.get(
-            f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras", headers=cabecalho
+            f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras", headers=cabecalho
         )
     ).json()
     assert len(historico) == 2
@@ -98,13 +98,13 @@ async def test_nova_vigencia_nao_pode_comecar_antes_da_aberta(
     fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
 
     await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": "2026-06-01"},
         headers=cabecalho,
     )
 
     invalida = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": "2026-01-01"},
         headers=cabecalho,
     )
@@ -120,7 +120,7 @@ async def test_vigencia_no_futuro_e_rejeitada(
 
     amanha = (date.today() + timedelta(days=1)).isoformat()
     resposta = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": amanha},
         headers=cabecalho,
     )
@@ -134,7 +134,7 @@ async def test_fornecedor_inexistente_da_404(
     bogus = "00000000-0000-0000-0000-000000000000"
 
     resposta = await cliente.post(
-        f"/api/v1/fornecedores/{bogus}/empresas-compradoras",
+        f"/api/v1/parceiros/{bogus}/empresas-compradoras",
         json={"empresa_compradora_id": str(empresa.id), "vigencia_inicio": "2026-01-01"},
         headers=cabecalho,
     )
@@ -150,7 +150,7 @@ async def test_abrir_vigencia_recusa_empresa_compradora_inexistente(
     fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
 
     resposta = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={
             "empresa_compradora_id": "00000000-0000-0000-0000-000000000000",
             "vigencia_inicio": "2026-01-01",
@@ -175,7 +175,7 @@ async def test_abrir_vigencia_recusa_empresa_compradora_desativada(
     fornecedor_id = await _criar_fornecedor(cliente, cabecalho)
 
     resposta = await cliente.post(
-        f"/api/v1/fornecedores/{fornecedor_id}/empresas-compradoras",
+        f"/api/v1/parceiros/{fornecedor_id}/empresas-compradoras",
         json={"empresa_compradora_id": str(desativada.id), "vigencia_inicio": "2026-01-01"},
         headers=cabecalho,
     )
@@ -216,13 +216,13 @@ async def test_abrir_vigencia_aceita_empresa_compradora_diferente_da_ativa_sob_r
     headers = {"Authorization": f"Bearer {usuario.token}", "X-Empresa-Id": str(cenario.abacaxi)}
     async with AsyncClient(transport=transporte, base_url="http://teste", headers=headers) as http:
         fornecedor = await http.post(
-            "/api/v1/fornecedores",
-            json={"codigo": f"FOR-EC-{cenario.sufixo}", "razao_social": "Fornecedor Teste"},
+            "/api/v1/parceiros",
+            json=parceiro_json(f"FOR-EC-{cenario.sufixo}", "Fornecedor Teste"),
         )
         assert fornecedor.status_code == 201, fornecedor.text
 
         resposta = await http.post(
-            f"/api/v1/fornecedores/{fornecedor.json()['id']}/empresas-compradoras",
+            f"/api/v1/parceiros/{fornecedor.json()['id']}/empresas-compradoras",
             json={"empresa_compradora_id": str(cenario.uva), "vigencia_inicio": "2026-01-01"},
         )
 
@@ -235,17 +235,19 @@ async def test_fornecedor_empresa_de_outra_empresa_nao_aparece_no_recorte(
 ) -> None:
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
-        fornecedor_abacaxi = Fornecedor(
+        fornecedor_abacaxi = Parceiro(
             tenant_id=cenario.abacaxi,
             codigo=f"FOR-A-{cenario.sufixo}",
             razao_social="Da Abacaxi",
+            tipo_pessoa="juridica",
+            e_fornecedor=True,
         )
         sessao.add(fornecedor_abacaxi)
         await sessao.flush()
         sessao.add(
             FornecedorEmpresa(
                 tenant_id=cenario.abacaxi,
-                fornecedor_id=fornecedor_abacaxi.id,
+                parceiro_id=fornecedor_abacaxi.id,
                 empresa_compradora_id=cenario.abacaxi,
                 vigencia_inicio=date(2026, 1, 1),
             )
@@ -254,15 +256,19 @@ async def test_fornecedor_empresa_de_outra_empresa_nao_aparece_no_recorte(
 
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        fornecedor_uva = Fornecedor(
-            tenant_id=cenario.uva, codigo=f"FOR-U-{cenario.sufixo}", razao_social="Da Uva"
+        fornecedor_uva = Parceiro(
+            tenant_id=cenario.uva,
+            codigo=f"FOR-U-{cenario.sufixo}",
+            razao_social="Da Uva",
+            tipo_pessoa="juridica",
+            e_fornecedor=True,
         )
         sessao.add(fornecedor_uva)
         await sessao.flush()
         sessao.add(
             FornecedorEmpresa(
                 tenant_id=cenario.uva,
-                fornecedor_id=fornecedor_uva.id,
+                parceiro_id=fornecedor_uva.id,
                 empresa_compradora_id=cenario.uva,
                 vigencia_inicio=date(2026, 1, 1),
             )
@@ -283,7 +289,13 @@ async def test_empresa_compradora_em_resolve_a_vigencia_certa(
     """`empresa_compradora_em` ainda não tem chamador em produção (a S5/compras é quem vai
     usar), mas é a regra de negócio que a aba `Histórico Emp. Comp.` do legado documenta —
     coberta aqui para não ficar código morto sem prova."""
-    fornecedor = Fornecedor(tenant_id=empresa.id, codigo="FOR001", razao_social="X")
+    fornecedor = Parceiro(
+        tenant_id=empresa.id,
+        codigo="FOR001",
+        razao_social="X",
+        tipo_pessoa="juridica",
+        e_fornecedor=True,
+    )
     sessao.add(fornecedor)
     await sessao.flush()
 
@@ -291,14 +303,14 @@ async def test_empresa_compradora_em_resolve_a_vigencia_certa(
         [
             FornecedorEmpresa(
                 tenant_id=empresa.id,
-                fornecedor_id=fornecedor.id,
+                parceiro_id=fornecedor.id,
                 empresa_compradora_id=empresa.id,
                 vigencia_inicio=date(2026, 1, 1),
                 vigencia_fim=date(2026, 5, 31),
             ),
             FornecedorEmpresa(
                 tenant_id=empresa.id,
-                fornecedor_id=fornecedor.id,
+                parceiro_id=fornecedor.id,
                 empresa_compradora_id=empresa.id,
                 vigencia_inicio=date(2026, 6, 1),
                 vigencia_fim=None,

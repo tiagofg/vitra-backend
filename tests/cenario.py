@@ -30,12 +30,33 @@ from app.core.tenancy import GUC_EMPRESA, declarar_empresa
 from app.modules.apoio.models import DominioApoio, TabelaApoio
 from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa
 from app.modules.empresa.models import Empresa
-from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante
+from app.modules.produtos.models import Produto, Variante, VarianteEmpresa
 
 # Nome fixo do grupo que `criar_usuario_vinculado` concede por padrão. Get-or-create: vários
 # testes criam usuários na mesma execução, e `Grupo.nome`/`Permissao.(recurso, acao)` são
 # `UniqueConstraint` — recriar a cada chamada estouraria a partir do segundo teste.
 _NOME_GRUPO_PRODUTOS = "produtos (cenário de teste)"
+
+
+def parceiro_json(codigo: str, razao_social: str, **papeis: bool) -> dict[str, object]:
+    """Corpo de `POST /parceiros`. Desde a unificação em `partners`, criar um fornecedor é
+    criar um parceiro com `e_fornecedor=true` — não há mais `POST /fornecedores`.
+
+    Sem papel explícito assume fornecedor: é o uso dominante nos testes de catálogo, que
+    precisam de alguém para pendurar em `produto_fornecedor`. Passe `e_cliente=True` (etc.)
+    para os outros.
+    """
+    corpo: dict[str, object] = {
+        "codigo": codigo,
+        "razao_social": razao_social,
+        "tipo_pessoa": "juridica",
+        "e_cliente": False,
+        "e_fornecedor": True,
+        "e_profissional": False,
+    }
+    corpo.update(papeis)
+    return corpo
+
 
 # Lê `GUC_EMPRESA` em vez de repetir a string. Não é a linha duplicada que custa: com o
 # nome literal aqui, renomear o GUC deixaria `test_guc_vazio_nao_estoura_o_cast` **verde**
@@ -161,11 +182,10 @@ async def _catalogo_da_empresa(
         await sessao.flush()
 
         sessao.add(
-            ProdutoEmpresa(
+            VarianteEmpresa(
                 tenant_id=empresa_id,
                 variante_id=com_preco.id,
                 preco_cents=189_90,
-                estoque=Decimal("12.000"),
                 estoque_minimo=Decimal("2.000"),
             )
         )

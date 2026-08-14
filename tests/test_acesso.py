@@ -105,7 +105,10 @@ async def test_usuario_criado_pela_api_consegue_logar(
         headers=cabecalho_admin,
     )
     assert criado.status_code == 201
-    assert "senha" not in criado.text
+    # Chave JSON exata, não a substring solta: campos legítimos do contrato contêm
+    # "senha" no nome (`deve_trocar_senha`), e `"senha" not in texto` reprovaria por causa
+    # deles sem que nenhum segredo tenha vazado.
+    assert '"senha"' not in criado.text
     assert "senha_hash" not in criado.text
 
     cabecalho = await autenticar(cliente, "comprador", "senha-do-comprador-1")

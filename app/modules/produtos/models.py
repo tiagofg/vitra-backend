@@ -1,6 +1,6 @@
 """Produto, variante, preço/estoque, fornecedor do produto e grupos relacionados.
 
-Origem: `Produto`/`Variante`/`ProdutoEmpresa` viviam em `app/modules/bakeoff/`, mapeadas
+Origem: `Produto`/`Variante`/`VarianteEmpresa` viviam em `app/modules/bakeoff/`, mapeadas
 sobre `Base` puro (sem auditoria) porque o schema do banco compartilhado do Neon era fixo e
 não tinha essas colunas. Com o bake-off encerrado (S0.5) o módulo passa a ser dono do
 próprio schema, e os três modelos ganharam `ModeloTenant` — PK composta e auditoria, como
@@ -94,6 +94,14 @@ class Produto(ModeloTenant, AtivoMixin):
         Uuid, ForeignKey("tenants.id", ondelete="RESTRICT")
     )
 
+    # `products.group_id` do diagrama. Coluna física `group_id`, atributo `grupo_id`. É o
+    # eixo que o item de orçamento congela em `quote_items.product_group` e que o desconto
+    # por grupo da tela de orçamento usa — por isso é campo próprio, e não mais um dos
+    # `tipo_*` acima.
+    grupo_id: Mapped[uuid.UUID | None] = mapped_column(
+        "group_id", Uuid, ForeignKey("catalog_lookups.id", ondelete="RESTRICT")
+    )
+
     fora_de_linha: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consultar_valor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sobre_medida: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -132,8 +140,8 @@ class Produto(ModeloTenant, AtivoMixin):
 
 
 class Variante(ModeloTenant, AtivoMixin):
-    """`Acabamento × Tamanho`. Preço e estoque não moram aqui — moram abaixo, em
-    `product_tenant`.
+    """`Acabamento × Tamanho`. Preço não mora aqui — mora abaixo, em
+    `variant_tenant_settings`; saldo de estoque mora em `stock_balances`.
 
     `acabamento_id`/`tamanho_id` são FK para `catalog_lookups`, não texto livre — os dois são
     `[combo +...]` do legado (domínios `acabamento`/`tamanho`), a mesma razão de
@@ -172,37 +180,45 @@ class Variante(ModeloTenant, AtivoMixin):
     # `lazy="joined"` — um-para-um, mesmo padrão de `VinculoEmpresa.colaborador`/`grupo`:
     # sempre um `JOIN` a mais na consulta, nunca uma segunda viagem ao banco, e não
     # duplica linha porque a cardinalidade do outro lado é no máximo 1.
-    preco: Mapped[ProdutoEmpresa | None] = relationship(
+    preco: Mapped[VarianteEmpresa | None] = relationship(
         back_populates="variante", cascade="all, delete-orphan", uselist=False, lazy="joined"
     )
 
 
-class ProdutoEmpresa(ModeloTenant):
-    """Preço e estoque da variante naquela empresa.
+class VarianteEmpresa(ModeloTenant, AtivoMixin):
+    """O que a variante tem de específico daquela empresa: preço de venda e estoque mínimo.
 
     Repare no que a FK composta compra: esta linha só consegue apontar para uma variante
     **da mesma empresa**. Não é convenção nem validação de serviço — o `INSERT` falha.
+
+    **O saldo de estoque não mora mais aqui.** Até o diagrama `cabinet-minimo` esta tabela
+    se chamava `product_tenant` e tinha uma coluna `stock_qty` — um número solto, sem
+    história: quem mexeu, quando, por quê. Agora o saldo é `stock_balances` (por variante
+    **e local**, que é o que uma empresa com depósito e loja precisa) e a história é
+    `stock_movements`. O que sobrou aqui é configuração, não movimento — daí o nome novo.
+    `estoque_minimo` fica: é o ponto de reposição que a empresa configura, não um saldo.
     """
 
-    __tablename__ = "product_tenant"
+    __tablename__ = "variant_tenant_settings"
     __table_args__ = (
-        pk_tenant("product_tenant"),
+        pk_tenant("variant_tenant_settings"),
         ForeignKeyConstraint(
             ["tenant_id", "variant_id"],
             ["product_variants.tenant_id", "product_variants.id"],
-            name="fk_product_tenant_variant",
+            name="fk_variant_tenant_settings_variant",
             ondelete="CASCADE",
         ),
-        UniqueConstraint("tenant_id", "variant_id", name="uq_product_tenant_variant"),
-        CheckConstraint("price_cents >= 0", name="price_cents_nao_negativo"),
-        CheckConstraint("stock_qty >= 0", name="stock_qty_nao_negativo"),
+        UniqueConstraint("tenant_id", "variant_id", name="uq_variant_tenant_settings_variant"),
+        CheckConstraint("sale_price_cents >= 0", name="sale_price_cents_nao_negativo"),
+        CheckConstraint("min_stock >= 0", name="min_stock_nao_negativo"),
     )
 
     variante_id: Mapped[uuid.UUID] = mapped_column("variant_id", Uuid, nullable=False)
     # Dinheiro é inteiro em centavos. R$ 12,34 é 1234. Nunca float, nunca Numeric —
     # converter para reais é responsabilidade do schema de saída, não do banco.
-    preco_cents: Mapped[int] = mapped_column("price_cents", BigInteger, nullable=False, default=0)
-    estoque: Mapped[Decimal] = mapped_column("stock_qty", Numeric(14, 3), nullable=False, default=0)
+    preco_cents: Mapped[int] = mapped_column(
+        "sale_price_cents", BigInteger, nullable=False, default=0
+    )
     estoque_minimo: Mapped[Decimal] = mapped_column(
         "min_stock", Numeric(14, 3), nullable=False, default=0
     )
@@ -230,9 +246,13 @@ class ProdutoFornecedor(ModeloTenant):
             name="fk_produto_fornecedor_produto",
             ondelete="CASCADE",
         ),
+        # Aponta para `partners` desde a unificação dos cadastros (ver
+        # `app/modules/pessoas/models.py`). A coluna continua `fornecedor_id` porque é o
+        # papel que importa aqui — o que o banco não confere é que o parceiro apontado tenha
+        # de fato `is_supplier`; quem cobra isso é `ProdutoFornecedorService`.
         ForeignKeyConstraint(
             ["tenant_id", "fornecedor_id"],
-            ["fornecedor.tenant_id", "fornecedor.id"],
+            ["partners.tenant_id", "partners.id"],
             name="fk_produto_fornecedor_fornecedor",
             ondelete="RESTRICT",
         ),

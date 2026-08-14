@@ -103,6 +103,7 @@ class UsuarioSaida(_Saida):
     email: str
     ativo: bool
     superusuario: bool
+    deve_trocar_senha: bool
     limite_desconto_pct: Decimal
     grupos: list[GrupoSaida] = []
 
@@ -113,6 +114,7 @@ class EuSaida(_Saida):
     nome: str
     email: str
     superusuario: bool
+    deve_trocar_senha: bool
     limite_desconto_pct: Decimal
     grupos: list[str]
     permissoes: list[str]

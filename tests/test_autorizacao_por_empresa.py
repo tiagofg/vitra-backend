@@ -182,7 +182,7 @@ async def test_sem_permissao_prevalece_tambem_em_rota_da_fabrica_crud(
     app_bakeoff: FastAPI, motor_runtime: AsyncEngine, cenario: Cenario
 ) -> None:
     """Mesma prova que `test_sem_permissao_prevalece_sobre_empresa_nao_declarada`, mas numa
-    rota que `app/common/crud_router.py` monta (`/clientes`), não numa escrita à mão
+    rota que `app/common/crud_router.py` monta (`/parceiros`), não numa escrita à mão
     (`/produtos`). A fábrica promete preservar a ordem `require(...)` antes de
     `SessaoEmpresa` — este teste é o que prova a promessa, e não só o comentário dela.
     """
@@ -190,7 +190,7 @@ async def test_sem_permissao_prevalece_tambem_em_rota_da_fabrica_crud(
         motor_runtime,
         cenario,
         empresas=(cenario.abacaxi,),
-        sufixo_login="-sem-permissao-cliente",
+        sufixo_login="-sem-permissao-parceiro",
         com_permissao_produtos=False,
     )
 
@@ -200,7 +200,7 @@ async def test_sem_permissao_prevalece_tambem_em_rota_da_fabrica_crud(
         base_url="http://teste",
         headers={"Authorization": f"Bearer {usuario.token}"},
     ) as cliente:
-        resposta = await cliente.get("/api/v1/clientes")
+        resposta = await cliente.get("/api/v1/parceiros")
 
     assert resposta.status_code == 403, resposta.text
     assert resposta.json()["erro"]["codigo"] == "sem_permissao"

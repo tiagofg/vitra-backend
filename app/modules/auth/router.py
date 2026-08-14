@@ -72,6 +72,7 @@ async def eu(usuario: UsuarioAtual) -> EuSaida:
         nome=usuario.nome,
         email=usuario.email,
         superusuario=usuario.superusuario,
+        deve_trocar_senha=usuario.deve_trocar_senha,
         limite_desconto_pct=usuario.limite_desconto_pct,
         grupos=[g.nome for g in usuario.grupos],
         permissoes=sorted(usuario.permissoes_efetivas()),

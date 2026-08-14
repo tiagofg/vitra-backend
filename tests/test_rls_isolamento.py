@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.core.listing import ListParams
 from app.core.tenancy import declarar_empresa
 from app.models import TABELAS_POR_EMPRESA
-from app.modules.produtos.models import ProdutoEmpresa
+from app.modules.produtos.models import VarianteEmpresa
 from app.modules.produtos.schemas import ProdutoSaida
 from app.modules.produtos.service import ProdutoService
 from tests.cenario import SQL_DECLARAR, Cenario
@@ -42,11 +42,10 @@ async def test_fk_composta_recusa_preco_de_produto_de_outra_empresa(
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
         sessao.add(
-            ProdutoEmpresa(
+            VarianteEmpresa(
                 tenant_id=cenario.abacaxi,
                 variante_id=cenario.variante_livre_abacaxi,
                 preco_cents=9990,
-                estoque=0,
                 estoque_minimo=0,
             )
         )
@@ -55,18 +54,17 @@ async def test_fk_composta_recusa_preco_de_produto_de_outra_empresa(
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
         sessao.add(
-            ProdutoEmpresa(
+            VarianteEmpresa(
                 tenant_id=cenario.abacaxi,
                 variante_id=cenario.variante_uva,  # variante da OUTRA empresa
                 preco_cents=100,
-                estoque=0,
                 estoque_minimo=0,
             )
         )
         with pytest.raises(IntegrityError) as erro:
             await sessao.commit()
 
-    assert "fk_product_tenant_variant" in str(erro.value)
+    assert "fk_variant_tenant_settings_variant" in str(erro.value)
 
 
 # --- 2. consulta sem filtro no código só enxerga a empresa declarada ----------

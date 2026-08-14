@@ -5,13 +5,14 @@ from __future__ import annotations
 from httpx import AsyncClient
 
 from app.modules.empresa.models import Empresa
+from tests.cenario import parceiro_json
 
 
 def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, str]:
     return {**cabecalho_admin, "X-Empresa-Id": str(empresa.id)}
 
 
-async def _criar_produto_com_fornecedor(
+async def _criar_produto_comparceiro_json(
     cliente: AsyncClient,
     cabecalho: dict[str, str],
     *,
@@ -21,8 +22,8 @@ async def _criar_produto_com_fornecedor(
 ) -> str:
     fornecedor_id = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": f"FOR-{codigo}", "razao_social": f"Fornecedor de {codigo}"},
+            "/api/v1/parceiros",
+            json=parceiro_json(f"FOR-{codigo}", f"Fornecedor de {codigo}"),
             headers=cabecalho,
         )
     ).json()["id"]
@@ -78,13 +79,13 @@ async def test_lookup_por_descricao_ignora_acento(
     assert len(resposta.json()) == 1
 
 
-async def test_lookup_por_codigo_do_fornecedor(
+async def test_lookup_por_codigo_doparceiro_json(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
     """A tela de orçamento precisa achar o item digitando o código que o fornecedor usa,
     não só o código próprio."""
     cabecalho = _cabecalho(cabecalho_admin, empresa)
-    produto_id = await _criar_produto_com_fornecedor(
+    produto_id = await _criar_produto_comparceiro_json(
         cliente,
         cabecalho,
         codigo="PEND001",
@@ -119,15 +120,15 @@ async def test_lookup_com_dois_fornecedores_nao_duplica_produto(
     ).json()["id"]
     fornecedor_a = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FORA", "razao_social": "Fornecedor A"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FORA", "Fornecedor A"),
             headers=cabecalho,
         )
     ).json()["id"]
     fornecedor_b = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FORB", "razao_social": "Fornecedor B"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FORB", "Fornecedor B"),
             headers=cabecalho,
         )
     ).json()["id"]

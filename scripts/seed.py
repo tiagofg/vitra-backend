@@ -3,8 +3,9 @@
     python scripts/seed.py
 
 Cria/atualiza: permissões (a partir do catálogo), UFs, cidades e bancos de exemplo,
-as duas empresas do grupo, os grupos de acesso, o usuário administrador, cliente/fornecedor/
-transportadora de exemplo (S1) e produtos com variante e preço (S2), tudo sob a VERTZ.
+as duas empresas do grupo, os grupos de acesso, o usuário administrador, parceiros e
+transportadora de exemplo, locais de estoque, e produtos com variante, preço e saldo
+inicial — tudo sob a VERTZ.
 Rodar duas vezes não duplica nada.
 """
 
@@ -31,8 +32,16 @@ from app.core.tenancy import declarar_empresa  # noqa: E402
 from app.modules.apoio.models import Banco, Cidade, DominioApoio, TabelaApoio, Uf  # noqa: E402
 from app.modules.auth.models import Grupo, Permissao, Usuario, VinculoEmpresa  # noqa: E402
 from app.modules.empresa.models import Empresa, Filial  # noqa: E402
-from app.modules.pessoas.models import Cliente, Fornecedor, Transportadora  # noqa: E402
-from app.modules.produtos.models import Produto, ProdutoEmpresa, Variante  # noqa: E402
+from app.modules.estoque.models import (  # noqa: E402
+    LocalEstoque,
+    MotivoMovimento,
+    MovimentoEstoque,
+    OrigemMovimento,
+    SaldoEstoque,
+    TipoLocalEstoque,
+)
+from app.modules.pessoas.models import Parceiro, Transportadora  # noqa: E402
+from app.modules.produtos.models import Produto, Variante, VarianteEmpresa  # noqa: E402
 
 ADMIN_LOGIN = os.getenv("VITRA_ADMIN_LOGIN", "admin")
 ADMIN_SENHA = os.getenv("VITRA_ADMIN_SENHA", "admin12345")
@@ -158,18 +167,24 @@ APOIO: dict[DominioApoio, list[tuple[str, str]]] = {
     ],
 }
 
-# Cadastros de exemplo da S1 — clientes, fornecedor e transportadora sob a empresa VERTZ.
-CLIENTES: list[tuple[str, str, str]] = [
-    ("CLI001", "Maria Andrade", "fisica"),
-    ("CLI002", "Studio ADR Arquitetura Ltda", "juridica"),
-]
-
-FORNECEDORES: list[tuple[str, str]] = [
-    ("FOR001", "Lumini Distribuidora Ltda"),
+# Cadastros de exemplo sob a empresa VERTZ.
+# Parceiros: `(codigo, razao_social, tipo_pessoa, cliente, fornecedor,
+# profissional)`. `PAR003` é o caso que motivou a unificação em `partners` — o escritório
+# de arquitetura que indica obra **e** compra por conta própria seria dois cadastros
+# desconectados no desenho antigo.
+PARCEIROS: list[tuple[str, str, str, bool, bool, bool]] = [
+    ("PAR001", "Maria Andrade", "fisica", True, False, False),
+    ("PAR002", "Lumini Distribuidora Ltda", "juridica", False, True, False),
+    ("PAR003", "Studio ADR Arquitetura Ltda", "juridica", True, False, True),
 ]
 
 TRANSPORTADORAS: list[tuple[str, str]] = [
     ("TRA001", "Rápido Entrega Transportes Ltda"),
+]
+
+LOCAIS_ESTOQUE: list[tuple[str, str, TipoLocalEstoque]] = [
+    ("DEP01", "Depósito central", TipoLocalEstoque.deposito),
+    ("LOJ01", "Loja", TipoLocalEstoque.loja),
 ]
 
 # Produtos de exemplo com variante (acabamento × tamanho) e preço/estoque — S2.
@@ -340,29 +355,31 @@ async def semear_acesso(
 
 
 async def semear_pessoas(session: AsyncSession, empresa: Empresa) -> int:
-    """Cliente, fornecedor e transportadora de exemplo, sob a empresa dada.
+    """Parceiros e transportadora de exemplo, sob a empresa dada.
 
-    `cliente`/`fornecedor`/`transportadora` estão sob RLS: a leitura de "já existe?" só
+    `partners`/`transportadora` estão sob RLS: a leitura de "já existe?" só
     enxerga a empresa declarada, então a checagem de idempotência já sai recortada sem
     filtro escrito à mão — mesmo padrão de `semear_empresas` para `Filial`.
     """
     await declarar_empresa(session, empresa.id)
     criados = 0
 
-    for codigo, nome, tipo_pessoa in CLIENTES:
-        existe = (await session.execute(select(Cliente.id).where(Cliente.codigo == codigo))).first()
-        if existe is None:
-            session.add(
-                Cliente(tenant_id=empresa.id, codigo=codigo, nome=nome, tipo_pessoa=tipo_pessoa)
-            )
-            criados += 1
-
-    for codigo, razao_social in FORNECEDORES:
+    for codigo, razao_social, tipo_pessoa, e_cli, e_for, e_pro in PARCEIROS:
         existe = (
-            await session.execute(select(Fornecedor.id).where(Fornecedor.codigo == codigo))
+            await session.execute(select(Parceiro.id).where(Parceiro.codigo == codigo))
         ).first()
         if existe is None:
-            session.add(Fornecedor(tenant_id=empresa.id, codigo=codigo, razao_social=razao_social))
+            session.add(
+                Parceiro(
+                    tenant_id=empresa.id,
+                    codigo=codigo,
+                    razao_social=razao_social,
+                    tipo_pessoa=tipo_pessoa,
+                    e_cliente=e_cli,
+                    e_fornecedor=e_for,
+                    e_profissional=e_pro,
+                )
+            )
             criados += 1
 
     for codigo, nome in TRANSPORTADORAS:
@@ -373,20 +390,33 @@ async def semear_pessoas(session: AsyncSession, empresa: Empresa) -> int:
             session.add(Transportadora(tenant_id=empresa.id, codigo=codigo, nome=nome))
             criados += 1
 
+    for codigo, nome, tipo in LOCAIS_ESTOQUE:
+        existe = (
+            await session.execute(select(LocalEstoque.id).where(LocalEstoque.codigo == codigo))
+        ).first()
+        if existe is None:
+            session.add(LocalEstoque(tenant_id=empresa.id, codigo=codigo, nome=nome, tipo=tipo))
+            criados += 1
+
     await session.flush()
     return criados
 
 
 async def semear_produtos(session: AsyncSession, empresa: Empresa) -> int:
-    """Produtos de exemplo com variante e preço, sob a empresa dada — mesmo padrão de
-    idempotência de `semear_pessoas`. Depende de `semear_apoio` já ter rodado nesta mesma
-    transação: é de lá que vêm `marca`/`acabamento`/`tamanho`.
+    """Produtos de exemplo com variante, preço e saldo inicial, sob a empresa dada —
+    mesmo padrão de idempotência de `semear_pessoas`. Depende de `semear_apoio` (de onde
+    vêm `marca`/`acabamento`/`tamanho`) e de `semear_pessoas` (de onde vêm os locais de
+    estoque) já terem rodado nesta mesma transação.
     """
     await declarar_empresa(session, empresa.id)
 
     apoio_por_chave = {
         (a.dominio, a.codigo): a
         for a in (await session.execute(select(TabelaApoio))).scalars().all()
+    }
+    # Depende de `semear_pessoas` já ter rodado nesta transação — é de lá que vêm os locais.
+    locais = {
+        local.tipo: local for local in (await session.execute(select(LocalEstoque))).scalars().all()
     }
 
     criados = 0
@@ -420,11 +450,33 @@ async def semear_produtos(session: AsyncSession, empresa: Empresa) -> int:
             session.add(variante)
             await session.flush()
             session.add(
-                ProdutoEmpresa(
+                VarianteEmpresa(
                     tenant_id=empresa.id,
                     variante_id=variante.id,
                     preco_cents=var["preco_cents"],
-                    estoque=Decimal(var["estoque"]),
+                )
+            )
+            # O saldo não mora mais na variante: entra como movimento de inventário no
+            # depósito, e o saldo é consequência dele — ver `app/modules/estoque/models.py`.
+            deposito = locais[TipoLocalEstoque.deposito]
+            qtd = Decimal(var["estoque"])
+            session.add(
+                SaldoEstoque(
+                    tenant_id=empresa.id,
+                    variante_id=variante.id,
+                    local_id=deposito.id,
+                    quantidade=qtd,
+                )
+            )
+            session.add(
+                MovimentoEstoque(
+                    tenant_id=empresa.id,
+                    variante_id=variante.id,
+                    local_id=deposito.id,
+                    delta=qtd,
+                    motivo=MotivoMovimento.inventario,
+                    origem_tipo=OrigemMovimento.inventario,
+                    saldo_apos=qtd,
                 )
             )
 

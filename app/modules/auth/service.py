@@ -175,6 +175,9 @@ class AuthService:
             raise RegraDeNegocio("A senha nova precisa ser diferente da atual.")
         usuario.senha_hash = gerar_hash_senha(senha_nova)
         usuario.senha_versao += 1
+        # A obrigação foi cumprida: quem trocou a própria senha não precisa mais ser levado
+        # para a tela de troca no próximo login.
+        usuario.deve_trocar_senha = False
         await self.session.flush()
 
     async def trocar_empresa(self, usuario: Usuario, empresa_id: uuid.UUID) -> TokenSaida:
@@ -308,6 +311,10 @@ class UsuarioService(BaseService[Usuario, UsuarioCriar, UsuarioAtualizar]):
             )
         usuario.senha_hash = gerar_hash_senha(senha_nova)
         usuario.senha_versao += 1
+        # Ao contrário de `alterar_senha`, aqui quem escolheu a senha foi **outra pessoa** —
+        # o administrador conhece o segredo. `deve_trocar_senha` é o que garante que ele
+        # deixe de conhecer no próximo acesso.
+        usuario.deve_trocar_senha = True
         await self.session.flush()
         return usuario
 

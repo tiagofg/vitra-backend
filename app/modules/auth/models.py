@@ -89,6 +89,13 @@ class Usuario(ModeloBase, AtivoMixin):
     # mesmo dentro do prazo de validade — sem isto, uma senha vazada e depois trocada não
     # invalidava o token que já estava com quem não devia.
     senha_versao: Mapped[int] = mapped_column(default=0, nullable=False)
+    # `must_change_password` do diagrama. Conta criada por administrador (ou com senha
+    # resetada) nasce com isto ligado: o login funciona, mas o front sabe que precisa levar
+    # a pessoa para a troca antes de qualquer outra tela. Desliga sozinho na troca —
+    # `AuthService.trocar_senha`.
+    deve_trocar_senha: Mapped[bool] = mapped_column(
+        "must_change_password", Boolean, default=False, nullable=False
+    )
     superusuario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Trava de força bruta em `/auth/login` — ver `AuthService.autenticar`. Só reseta ao
     # atingir o limite e a janela expirar, ou no login certo: não há decaimento gradual
@@ -112,7 +119,7 @@ class Usuario(ModeloBase, AtivoMixin):
         return self.superusuario or f"{recurso}:{acao}" in self.permissoes_efetivas()
 
 
-class VinculoEmpresa(Base, TenantScopedMixin):
+class VinculoEmpresa(Base, TenantScopedMixin, AtivoMixin):
     """Papel da pessoa naquela empresa — o antigo `employee_company.role` (5 valores
     fixos do bake-off), agora apontando para um `Grupo` de verdade.
 
@@ -129,6 +136,12 @@ class VinculoEmpresa(Base, TenantScopedMixin):
     continua resolvido só por `Usuario.pode()`, porque essas tabelas não têm `tenant_id` —
     um grupo de vínculo aplicado a elas seria escalada de privilégio (achado de revisão do
     PR de produtos), não recorte por empresa.
+
+    **`role` do diagrama não volta.** `cabinet-minimo` desenha `employee_tenants.role` como
+    VARCHAR — que é exatamente o campo do bake-off (5 valores fixos) que `grupo_id`
+    substituiu por um `Grupo` de verdade. Reintroduzi-lo seria trocar RBAC granular por
+    texto livre. O `active` do diagrama, esse sim, entra: desligar o vínculo sem apagar a
+    linha preserva o histórico de quem já trabalhou na empresa.
     """
 
     __tablename__ = "employee_company"

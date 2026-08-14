@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.core.tenancy import declarar_empresa
 from app.modules.empresa.models import Empresa
 from app.modules.produtos.models import Variante
-from tests.cenario import Cenario
+from tests.cenario import Cenario, parceiro_json
 
 
 def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, str]:
@@ -198,15 +198,15 @@ async def test_grade_de_fornecedores_um_padrao_por_produto(
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     fornecedor_a = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FOR001", "razao_social": "Fornecedor A"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FOR001", "Fornecedor A"),
             headers=cabecalho,
         )
     ).json()["id"]
     fornecedor_b = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FOR002", "razao_social": "Fornecedor B"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FOR002", "Fornecedor B"),
             headers=cabecalho,
         )
     ).json()["id"]
@@ -263,15 +263,15 @@ async def test_grade_de_fornecedores_troca_qual_e_padrao(
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     fornecedor_a = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FOR001", "razao_social": "Fornecedor A"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FOR001", "Fornecedor A"),
             headers=cabecalho,
         )
     ).json()["id"]
     fornecedor_b = (
         await cliente.post(
-            "/api/v1/fornecedores",
-            json={"codigo": "FOR002", "razao_social": "Fornecedor B"},
+            "/api/v1/parceiros",
+            json=parceiro_json("FOR002", "Fornecedor B"),
             headers=cabecalho,
         )
     ).json()["id"]

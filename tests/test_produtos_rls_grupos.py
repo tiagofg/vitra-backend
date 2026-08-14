@@ -5,7 +5,7 @@ inteira depende do RLS.
 `tests/test_produtos_catalogo.py` prova o CRUD desses recursos, mas pela fixture `cliente`
 — conexão de **dono**, que ignora política. Passar só por lá deixaria essa dependência do
 RLS sem prova: achado da revisão do PR de produtos, mesma lição que
-`tests/test_rls_isolamento.py` já aplica para `ProdutoEmpresa`. Aqui é a versão para
+`tests/test_rls_isolamento.py` já aplica para `VarianteEmpresa`. Aqui é a versão para
 `grupo_relacionado`/`item_relacionado`, direto no serviço, sob o papel de runtime.
 """
 

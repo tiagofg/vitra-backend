@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -24,7 +25,7 @@ def _conferir_documento_do_tipo_pessoa(
     Só valida quando os dois vêm juntos nesta requisição: num `PUT` parcial que manda só
     `cpf_cnpj` sem repetir `tipo_pessoa`, não dá para saber o tipo atual sem consultar o
     banco — validação cruzada de schema para quando o dado já existe fica para o serviço,
-    se algum dia importar o suficiente para valer o consulta extra.
+    se algum dia importar o suficiente para valer a consulta extra.
     """
     if tipo_pessoa is None or cpf_cnpj is None:
         return
@@ -36,67 +37,142 @@ def _conferir_documento_do_tipo_pessoa(
         )
 
 
-# --- Cliente ------------------------------------------------------------------
+def _conferir_ao_menos_um_papel(
+    e_cliente: bool | None, e_fornecedor: bool | None, e_profissional: bool | None
+) -> None:
+    """Espelha o `CHECK partners_ao_menos_um_papel` na borda, para o erro sair como `422`
+    de validação com o campo apontado, e não como `409` genérico de integridade.
+
+    No `PUT` os três chegam `None` quando não foram enviados — aí não há o que conferir,
+    porque desligar uma bandeira sem mencionar as outras é legítimo; quem pega o caso de
+    desligar a última é o `CHECK` do banco, que enxerga a linha inteira.
+    """
+    if e_cliente is None and e_fornecedor is None and e_profissional is None:
+        return
+    if not (e_cliente or e_fornecedor or e_profissional):
+        raise ValueError(
+            "Parceiro precisa ser ao menos um entre cliente, fornecedor ou profissional."
+        )
 
 
-class ClienteCriar(EnderecoCampos, ContatosCampos):
+# --- Parceiro ---------------------------------------------------------------------
+
+
+class ParceiroCriar(EnderecoCampos, ContatosCampos):
     """Sem `tenant_id`: a empresa vem da transação (RLS), não do corpo do pedido."""
 
     codigo: str = Field(min_length=1, max_length=20)
-    nome: str = Field(min_length=1, max_length=160)
+    razao_social: str = Field(
+        min_length=1, max_length=160, description="Nome civil, para pessoa física"
+    )
+    nome_fantasia: str | None = Field(default=None, max_length=160)
     tipo_pessoa: TipoPessoa
     cpf_cnpj: CpfCnpj | None = None
     rg_ie: str | None = Field(default=None, max_length=20)
     dt_nascimento: date | None = None
+
+    e_cliente: bool = False
+    e_fornecedor: bool = False
+    e_profissional: bool = False
+
+    registro_profissional: str | None = Field(
+        default=None, max_length=30, description="CREA ou CAU, quando profissional"
+    )
+    dados_bancarios: dict[str, Any] | None = None
+
     profissao_id: uuid.UUID | None = None
     estado_civil_id: uuid.UUID | None = None
     raca_cor_id: uuid.UUID | None = None
     nacionalidade_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
+    transportadora_padrao_id: uuid.UUID | None = None
     observacao: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
-    def _documento_bate_com_tipo_pessoa(self) -> ClienteCriar:
+    def _conferir(self) -> ParceiroCriar:
         _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        _conferir_ao_menos_um_papel(self.e_cliente, self.e_fornecedor, self.e_profissional)
         return self
 
 
-class ClienteAtualizar(EnderecoCampos, ContatosCampos):
+class ParceiroAtualizar(EnderecoCampos, ContatosCampos):
     codigo: str | None = Field(default=None, min_length=1, max_length=20)
-    nome: str | None = Field(default=None, min_length=1, max_length=160)
+    razao_social: str | None = Field(default=None, min_length=1, max_length=160)
+    nome_fantasia: str | None = Field(default=None, max_length=160)
     tipo_pessoa: TipoPessoa | None = None
     cpf_cnpj: CpfCnpj | None = None
     rg_ie: str | None = Field(default=None, max_length=20)
     dt_nascimento: date | None = None
+
+    e_cliente: bool | None = None
+    e_fornecedor: bool | None = None
+    e_profissional: bool | None = None
+
+    registro_profissional: str | None = Field(default=None, max_length=30)
+    dados_bancarios: dict[str, Any] | None = None
+
     profissao_id: uuid.UUID | None = None
     estado_civil_id: uuid.UUID | None = None
     raca_cor_id: uuid.UUID | None = None
     nacionalidade_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
+    transportadora_padrao_id: uuid.UUID | None = None
     observacao: str | None = Field(default=None, max_length=2000)
     ativo: bool | None = None
 
     @model_validator(mode="after")
-    def _documento_bate_com_tipo_pessoa(self) -> ClienteAtualizar:
+    def _conferir(self) -> ParceiroAtualizar:
         _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
+        _conferir_ao_menos_um_papel(self.e_cliente, self.e_fornecedor, self.e_profissional)
         return self
 
 
-class ClienteSaida(SaidaBase, EnderecoCampos, ContatosCampos):
+class ParceiroSaida(SaidaBase, EnderecoCampos, ContatosCampos):
     id: uuid.UUID
     tenant_id: uuid.UUID
     codigo: str
-    nome: str
+    razao_social: str
+    nome_fantasia: str | None = None
     tipo_pessoa: TipoPessoa
     cpf_cnpj: str | None = None
     rg_ie: str | None = None
     dt_nascimento: date | None = None
+    e_cliente: bool
+    e_fornecedor: bool
+    e_profissional: bool
+    registro_profissional: str | None = None
+    dados_bancarios: dict[str, Any] | None = None
     profissao_id: uuid.UUID | None = None
     estado_civil_id: uuid.UUID | None = None
     raca_cor_id: uuid.UUID | None = None
     nacionalidade_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
+    transportadora_padrao_id: uuid.UUID | None = None
     observacao: str | None = None
+    ativo: bool
+
+
+# --- Condição comercial (partner_tenant_links) --------------------------------------
+
+
+class ParceiroEmpresaGravar(BaseModel):
+    """`PUT` idempotente: cria a condição comercial se não existir, atualiza se existir.
+    Não há `POST` separado — é no máximo uma linha por parceiro nesta empresa
+    (`uq_partner_tenant_links_partner`), então "criar de novo" não é operação que exista."""
+
+    codigo: str | None = Field(default=None, max_length=20)
+    condicao_pagamento: str | None = Field(default=None, max_length=60)
+    limite_credito_cents: int | None = Field(default=None, ge=0)
+    ativo: bool | None = None
+
+
+class ParceiroEmpresaSaida(SaidaBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    parceiro_id: uuid.UUID
+    codigo: str | None = None
+    condicao_pagamento: str | None = None
+    limite_credito_cents: int | None = None
     ativo: bool
 
 
@@ -104,7 +180,7 @@ class ClienteSaida(SaidaBase, EnderecoCampos, ContatosCampos):
 
 
 class ObraCriar(EnderecoCampos):
-    """`cliente_id` vem do path (`/clientes/{cliente_id}/obras`), não do corpo."""
+    """`parceiro_id` vem do path (`/parceiros/{parceiro_id}/obras`), não do corpo."""
 
     nome: str = Field(min_length=1, max_length=160)
 
@@ -117,7 +193,7 @@ class ObraAtualizar(EnderecoCampos):
 class ObraSaida(SaidaBase, EnderecoCampos):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    cliente_id: uuid.UUID
+    parceiro_id: uuid.UUID
     nome: str
     ativo: bool
 
@@ -150,35 +226,7 @@ class TransportadoraSaida(SaidaBase, EnderecoCampos, ContatosCampos):
     ativo: bool
 
 
-# --- Fornecedor -------------------------------------------------------------------
-
-
-class FornecedorCriar(EnderecoCampos, ContatosCampos):
-    codigo: str = Field(min_length=1, max_length=20)
-    razao_social: str = Field(min_length=1, max_length=160)
-    nome_fantasia: str | None = Field(default=None, max_length=160)
-    cnpj: CpfCnpj | None = None
-    transportadora_padrao_id: uuid.UUID | None = None
-
-
-class FornecedorAtualizar(EnderecoCampos, ContatosCampos):
-    codigo: str | None = Field(default=None, min_length=1, max_length=20)
-    razao_social: str | None = Field(default=None, min_length=1, max_length=160)
-    nome_fantasia: str | None = Field(default=None, max_length=160)
-    cnpj: CpfCnpj | None = None
-    transportadora_padrao_id: uuid.UUID | None = None
-    ativo: bool | None = None
-
-
-class FornecedorSaida(SaidaBase, EnderecoCampos, ContatosCampos):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    codigo: str
-    razao_social: str
-    nome_fantasia: str | None = None
-    cnpj: str | None = None
-    transportadora_padrao_id: uuid.UUID | None = None
-    ativo: bool
+# --- Histórico de empresa compradora ------------------------------------------------
 
 
 class FornecedorEmpresaAbrir(BaseModel):
@@ -202,55 +250,11 @@ class FornecedorEmpresaAbrir(BaseModel):
 class FornecedorEmpresaSaida(SaidaBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    fornecedor_id: uuid.UUID
+    parceiro_id: uuid.UUID
     empresa_compradora_id: uuid.UUID
     vigencia_inicio: date
     vigencia_fim: date | None = None
     motivo: str | None = None
-
-
-# --- Profissional externo ----------------------------------------------------------
-
-
-class ProfissionalExternoCriar(EnderecoCampos, ContatosCampos):
-    codigo: str = Field(min_length=1, max_length=20)
-    nome: str = Field(min_length=1, max_length=160)
-    tipo_pessoa: TipoPessoa
-    cpf_cnpj: CpfCnpj | None = None
-    profissao_id: uuid.UUID | None = None
-    crea_cau: str | None = Field(default=None, max_length=30)
-
-    @model_validator(mode="after")
-    def _documento_bate_com_tipo_pessoa(self) -> ProfissionalExternoCriar:
-        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
-        return self
-
-
-class ProfissionalExternoAtualizar(EnderecoCampos, ContatosCampos):
-    codigo: str | None = Field(default=None, min_length=1, max_length=20)
-    nome: str | None = Field(default=None, min_length=1, max_length=160)
-    tipo_pessoa: TipoPessoa | None = None
-    cpf_cnpj: CpfCnpj | None = None
-    profissao_id: uuid.UUID | None = None
-    crea_cau: str | None = Field(default=None, max_length=30)
-    ativo: bool | None = None
-
-    @model_validator(mode="after")
-    def _documento_bate_com_tipo_pessoa(self) -> ProfissionalExternoAtualizar:
-        _conferir_documento_do_tipo_pessoa(self.tipo_pessoa, self.cpf_cnpj)
-        return self
-
-
-class ProfissionalExternoSaida(SaidaBase, EnderecoCampos, ContatosCampos):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    codigo: str
-    nome: str
-    tipo_pessoa: TipoPessoa
-    cpf_cnpj: str | None = None
-    profissao_id: uuid.UUID | None = None
-    crea_cau: str | None = None
-    ativo: bool
 
 
 # --- Colaborador --------------------------------------------------------------------

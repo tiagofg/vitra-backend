@@ -55,15 +55,19 @@ class VarianteItem(BaseModel):
 
 
 class PrecoSaida(SaidaBase):
-    """Preço e estoque da variante naquela empresa.
+    """Configuração da variante naquela empresa — preço de venda e ponto de reposição.
 
     `preco_cents` sai como veio: inteiro em centavos. Converter para reais é trabalho da
     borda que **apresenta**, e o front do VITRA já faz isso — devolver `12.34` daqui
     reintroduziria float no caminho, que é justamente o que a convenção proíbe.
+
+    **Sem `estoque`.** O saldo deixou de ser uma coluna da variante e virou
+    `stock_balances`, por variante **e local** — um número só aqui não teria como dizer se
+    as 12 unidades estão no depósito ou na loja. Quem quer saldo consulta
+    `GET /estoque/saldos/{variante_id}`.
     """
 
     preco_cents: int = Field(description="Centavos. 1234 = R$ 12,34")
-    estoque: Decimal
     estoque_minimo: Decimal
     indice: Decimal | None = None
     tipo_valor: str | None = None

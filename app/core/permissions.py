@@ -39,12 +39,17 @@ CATALOGO: dict[str, tuple[Acao, ...]] = {
     "banco": CRUD,
     "uf": (Acao.ler,),
     "produto": CRUD,
-    "cliente": CRUD,
+    # Um recurso, não três: `cliente`/`fornecedor`/`profissional_externo` viraram bandeiras
+    # de `partners` (ver `app/modules/pessoas/models.py`), e permissão por bandeira daria a
+    # ilusão de recorte que a tabela não tem — quem pode ler parceiro lê a linha inteira,
+    # com todos os papéis que ela carrega.
+    "parceiro": CRUD,
     "obra": CRUD,
-    "fornecedor": CRUD,
     "colaborador": CRUD,
-    "profissional_externo": CRUD,
     "transportadora": CRUD,
+    "local_estoque": CRUD,
+    "estoque": CRUD,
+    "orcamento": (*CRUD, Acao.cancelar, Acao.fechar),
 }
 
 # Recursos cuja tabela é por empresa (`ModeloTenant`, sob RLS) — só esses fazem sentido para
@@ -60,12 +65,13 @@ RECURSOS_POR_EMPRESA = frozenset(
         "filial",
         "centro_custo",
         "produto",
-        "cliente",
+        "parceiro",
         "obra",
-        "fornecedor",
         "colaborador",
-        "profissional_externo",
         "transportadora",
+        "local_estoque",
+        "estoque",
+        "orcamento",
     }
 )
 

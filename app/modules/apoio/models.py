@@ -23,6 +23,10 @@ class DominioApoio(enum.StrEnum):
     cargo = "cargo"
     vinculo = "vinculo"
     categoria = "categoria"
+    # `products.group_id` do diagrama. Não é o mesmo que `tipo_linha`/`classificacao`: o
+    # grupo é o eixo que o item de orçamento carrega como snapshot (`quote_items.
+    # product_group`), usado para desconto por grupo na tela de orçamento.
+    grupo_produto = "grupo_produto"
     tipo_produto = "tipo_produto"
     tipo_peca = "tipo_peca"
     tipo_linha = "tipo_linha"

@@ -7,32 +7,25 @@ comum:
 * **Confere o domínio das FKs para `catalog_lookups`.** A FK em si é só
   `catalog_lookups.id` — nada no banco impede apontar `profissao_id` para uma linha de
   `marca`. `ConfereDominiosMixin` (`app/modules/apoio/service.py` — dono de `DominioApoio`)
-  fecha essa lacuna como regra de negócio, compartilhado com `produtos` (S2).
+  fecha essa lacuna como regra de negócio, compartilhado com `produtos`.
 * **Confere toda referência a outra tabela global.** `employee_id` (em `Colaborador`) e
   `empresa_compradora_id` (em `FornecedorEmpresa`) são FK simples para tabela **global**
   (`employees`/`tenants`) — sem `tenant_id`, então sem RLS a proteger. Sem checagem
   explícita, qualquer usuário autenticado grava um cadastro apontando para um UUID alheio
-  só porque ele existe — o mesmo furo que `empresa_do_pedido` fecha na borda para a
-  *própria* empresa do pedido, mas que nenhum RLS fecha sozinho para uma referência *a
-  outra* tabela global dentro do corpo do pedido. **As duas checagens não são a mesma
-  coisa, de propósito:**
+  só porque ele existe. **As duas checagens não são a mesma coisa, de propósito:**
     - `ColaboradorService` usa `tem_vinculo(session, employee_id, self.tenant_id)` — aqui
       `self.tenant_id` é a empresa **ativa** do pedido, a mesma que o GUC do RLS já
-      declarou; a consulta a `employee_company` (sob RLS) sai naturalmente recortada para
-      ela, e o filtro explícito continua correto mesmo sob uma conexão que ignora RLS.
+      declarou; a consulta a `employee_company` (sob RLS) sai naturalmente recortada.
     - `FornecedorEmpresaService.abrir_vigencia` **não** usa `tem_vinculo` — confere só que
       `empresa_compradora_id` é uma `Empresa` ativa. `tem_vinculo` consultaria
       `employee_company` pedindo vínculo com uma empresa **diferente** da ativa; sob RLS de
-      produção (papel de runtime, sem `BYPASSRLS`), a política já recorta a consulta para
-      `tenant_id = <empresa ativa>`, então perguntar por qualquer outro `tenant_id` na
-      mesma consulta é pedir a interseção de dois valores diferentes — sempre vazia,
-      inclusive para vínculo legítimo. `empresa_compradora_id` pode, de propósito, ser uma
-      empresa diferente da ativa (ver docstring de `FornecedorEmpresa`), então a checagem
-      certa é existência na tabela global, não vínculo pessoal.
-* **`ObraService`** é recortado por `cliente_id`, no mesmo molde de `ApoioService` recortado
-  por `dominio`.
-* **`FornecedorEmpresaService`** não é CRUD: só abre vigência (fecha a anterior) e lista o
-  histórico — não há `PUT`/`DELETE` de uma vigência.
+      produção a política já recorta a consulta para `tenant_id = <empresa ativa>`, então
+      perguntar por outro `tenant_id` na mesma consulta é pedir a interseção de dois valores
+      diferentes — sempre vazia, inclusive para vínculo legítimo.
+* **`ObraService`** é recortado por `parceiro_id`, no mesmo molde de `ApoioService`
+  recortado por `dominio`.
+* **`ParceiroService(papel=...)`** dá as listagens por papel (`/parceiros/clientes`,
+  `/parceiros/fornecedores`) sem três tabelas — é a bandeira que filtra, não o `__tablename__`.
 """
 
 from __future__ import annotations
@@ -43,6 +36,7 @@ from typing import Any
 
 from sqlalchemy import Select, asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.common.base_service import BaseService
 from app.core.errors import NaoEncontrado, RegraDeNegocio
@@ -61,33 +55,29 @@ from app.modules.auth.models import Usuario
 from app.modules.auth.service import tem_vinculo
 from app.modules.empresa.models import Empresa
 from app.modules.pessoas.models import (
-    Cliente,
     Colaborador,
-    Fornecedor,
     FornecedorEmpresa,
     Obra,
-    ProfissionalExterno,
+    Parceiro,
+    ParceiroEmpresa,
     Transportadora,
 )
 from app.modules.pessoas.schemas import (
-    ClienteAtualizar,
-    ClienteCriar,
     ColaboradorAtualizar,
     ColaboradorCriar,
-    FornecedorAtualizar,
-    FornecedorCriar,
     FornecedorEmpresaAbrir,
     ObraAtualizar,
     ObraCriar,
-    ProfissionalExternoAtualizar,
-    ProfissionalExternoCriar,
+    ParceiroAtualizar,
+    ParceiroCriar,
+    ParceiroEmpresaGravar,
     TransportadoraAtualizar,
     TransportadoraCriar,
 )
 
-# --- Cliente ------------------------------------------------------------------
+# --- Parceiro ---------------------------------------------------------------------
 
-_DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
+_DOMINIOS_PARCEIRO: dict[str, DominioApoio] = {
     "profissao_id": DominioApoio.profissao,
     "estado_civil_id": DominioApoio.estado_civil,
     "raca_cor_id": DominioApoio.raca_cor,
@@ -95,29 +85,128 @@ _DOMINIOS_CLIENTE: dict[str, DominioApoio] = {
     "categoria_id": DominioApoio.categoria,
 }
 
+#: `papel` de rota → coluna da bandeira. Um dicionário, e não `getattr(Parceiro, f"e_{papel}")`:
+#: o valor vem da URL, e derivar nome de atributo a partir de entrada do usuário é como se
+#: acha um `getattr` que lê qualquer coluna do modelo.
+PAPEIS: dict[str, InstrumentedAttribute[bool]] = {
+    "clientes": Parceiro.e_cliente,
+    "fornecedores": Parceiro.e_fornecedor,
+    "profissionais": Parceiro.e_profissional,
+}
 
-class ClienteService(ConfereDominiosMixin, BaseService[Cliente, ClienteCriar, ClienteAtualizar]):
-    nome_recurso = "Cliente"
+
+class ParceiroService(
+    ConfereDominiosMixin, BaseService[Parceiro, ParceiroCriar, ParceiroAtualizar]
+):
+    nome_recurso = "Parceiro"
     spec = ListingSpec(
-        model=Cliente,
-        campos_busca=("codigo", "nome", "cpf_cnpj"),
+        model=Parceiro,
+        campos_busca=("codigo", "razao_social", "nome_fantasia", "cpf_cnpj"),
         campo_codigo="codigo",
-        campos_ordenacao=("codigo", "nome", "criado_em"),
+        campos_ordenacao=("codigo", "razao_social", "criado_em"),
         ordenacao_padrao="codigo",
         campo_unico="codigo",
     )
-    dominios_por_campo = _DOMINIOS_CLIENTE
+    dominios_por_campo = _DOMINIOS_PARCEIRO
 
-    def _label_lookup(self, obj: Cliente) -> str:
-        return obj.nome
+    def __init__(
+        self,
+        session: AsyncSession,
+        usuario_id: uuid.UUID | None = None,
+        tenant_id: uuid.UUID | None = None,
+        papel: str | None = None,
+    ) -> None:
+        super().__init__(session, usuario_id, tenant_id)
+        self.papel = papel
 
-    def _extras_lookup(self, obj: Cliente) -> dict[str, Any]:
-        return {"cpf_cnpj": obj.cpf_cnpj}
+    def _stmt_base(self) -> Select[Any]:
+        stmt = select(Parceiro)
+        if self.papel is not None:
+            stmt = stmt.where(PAPEIS[self.papel].is_(True))
+        return stmt
+
+    def _label_lookup(self, obj: Parceiro) -> str:
+        return obj.nome_fantasia or obj.razao_social
+
+    def _extras_lookup(self, obj: Parceiro) -> dict[str, Any]:
+        return {
+            "cpf_cnpj": obj.cpf_cnpj,
+            "papeis": [
+                nome
+                for nome, tem in (
+                    ("cliente", obj.e_cliente),
+                    ("fornecedor", obj.e_fornecedor),
+                    ("profissional", obj.e_profissional),
+                )
+                if tem
+            ],
+        }
+
+
+class ParceiroEmpresaService:
+    """A condição comercial do parceiro nesta empresa. `PUT` idempotente — cria ou
+    atualiza; não herda `BaseService` porque não há `POST` nem listagem própria."""
+
+    nome_recurso = "Condição comercial"
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        parceiro_id: uuid.UUID,
+        usuario_id: uuid.UUID | None = None,
+        tenant_id: uuid.UUID | None = None,
+    ) -> None:
+        self.session = session
+        self.parceiro_id = parceiro_id
+        self.usuario_id = usuario_id
+        self.tenant_id = tenant_id
+
+    async def _exigir_parceiro(self) -> None:
+        existe = (
+            await self.session.execute(select(Parceiro.id).where(Parceiro.id == self.parceiro_id))
+        ).first()
+        if existe is None:
+            raise NaoEncontrado("Parceiro", self.parceiro_id)
+
+    async def obter(self) -> ParceiroEmpresa:
+        await self._exigir_parceiro()
+        vinculo = (
+            await self.session.execute(
+                select(ParceiroEmpresa).where(ParceiroEmpresa.parceiro_id == self.parceiro_id)
+            )
+        ).scalar_one_or_none()
+        if vinculo is None:
+            raise NaoEncontrado(self.nome_recurso, self.parceiro_id)
+        return vinculo
+
+    async def gravar(self, dados: ParceiroEmpresaGravar) -> ParceiroEmpresa:
+        await self._exigir_parceiro()
+        valores = dados.model_dump(exclude_unset=True)
+
+        vinculo = (
+            await self.session.execute(
+                select(ParceiroEmpresa).where(ParceiroEmpresa.parceiro_id == self.parceiro_id)
+            )
+        ).scalar_one_or_none()
+
+        if vinculo is None:
+            vinculo = ParceiroEmpresa(
+                tenant_id=self.tenant_id, parceiro_id=self.parceiro_id, **valores
+            )
+            if self.usuario_id is not None:
+                vinculo.criado_por_id = self.usuario_id
+            self.session.add(vinculo)
+        else:
+            for campo, valor in valores.items():
+                setattr(vinculo, campo, valor)
+
+        await self.session.flush()
+        return vinculo
 
 
 class ObraService(BaseService[Obra, ObraCriar, ObraAtualizar]):
-    """Recortado por `cliente_id`, no mesmo molde de `ApoioService` recortado por
-    `dominio` — o `cliente_id` vem do path (`/clientes/{cliente_id}/obras`), nunca do
+    """Recortado por `parceiro_id`, no mesmo molde de `ApoioService` recortado por
+    `dominio` — o `parceiro_id` vem do path (`/parceiros/{parceiro_id}/obras`), nunca do
     corpo."""
 
     nome_recurso = "Obra"
@@ -131,29 +220,29 @@ class ObraService(BaseService[Obra, ObraCriar, ObraAtualizar]):
     def __init__(
         self,
         session: AsyncSession,
-        cliente_id: uuid.UUID,
+        parceiro_id: uuid.UUID,
         usuario_id: uuid.UUID | None = None,
         tenant_id: uuid.UUID | None = None,
     ) -> None:
         super().__init__(session, usuario_id, tenant_id)
-        self.cliente_id = cliente_id
+        self.parceiro_id = parceiro_id
 
     def _stmt_base(self) -> Select[Any]:
-        return select(Obra).where(Obra.cliente_id == self.cliente_id)
+        return select(Obra).where(Obra.parceiro_id == self.parceiro_id)
 
     async def obter(self, id_: uuid.UUID) -> Obra:
         # `BaseService.obter()` não passa por `_stmt_base()` — é um `select` direto por
-        # `id`, então o recorte por `cliente_id` fica de fora se não for conferido aqui.
-        # Sem isto, `GET /clientes/A/obras/{obra-de-B}` acharia a obra de outro cliente
+        # `id`, então o recorte por `parceiro_id` fica de fora se não for conferido aqui.
+        # Sem isto, `GET /parceiros/A/obras/{obra-de-B}` acharia a obra de outro parceiro
         # da mesma empresa. Mesmo motivo de `ApoioService.obter` conferir `dominio`.
         obra = await super().obter(id_)
-        if obra.cliente_id != self.cliente_id:
+        if obra.parceiro_id != self.parceiro_id:
             raise NaoEncontrado(self.nome_recurso, id_)
         return obra
 
     async def _preparar_valores(self, dados: ObraCriar) -> dict[str, Any]:
         valores = await super()._preparar_valores(dados)
-        valores["cliente_id"] = self.cliente_id
+        valores["parceiro_id"] = self.parceiro_id
         return valores
 
     def _label_lookup(self, obj: Obra) -> str:
@@ -180,57 +269,37 @@ class TransportadoraService(
         return obj.nome
 
 
-# --- Fornecedor -----------------------------------------------------------------
-
-
-class FornecedorService(BaseService[Fornecedor, FornecedorCriar, FornecedorAtualizar]):
-    nome_recurso = "Fornecedor"
-    spec = ListingSpec(
-        model=Fornecedor,
-        campos_busca=("codigo", "razao_social", "nome_fantasia", "cnpj"),
-        campo_codigo="codigo",
-        campos_ordenacao=("codigo", "razao_social", "criado_em"),
-        ordenacao_padrao="codigo",
-        campo_unico="codigo",
-    )
-
-    def _label_lookup(self, obj: Fornecedor) -> str:
-        return obj.nome_fantasia or obj.razao_social
-
-    def _extras_lookup(self, obj: Fornecedor) -> dict[str, Any]:
-        return {"cnpj": obj.cnpj}
+# --- Histórico de empresa compradora ---------------------------------------------
 
 
 class FornecedorEmpresaService:
-    """Histórico de `Empresa compradora` de um fornecedor. Não herda `BaseService`: não há
+    """Histórico de `Empresa compradora` de um parceiro. Não herda `BaseService`: não há
     `PUT`/`DELETE` de uma vigência — só abrir uma nova (que fecha a anterior) e listar."""
 
     def __init__(
         self,
         session: AsyncSession,
-        fornecedor_id: uuid.UUID,
+        parceiro_id: uuid.UUID,
         usuario_id: uuid.UUID | None = None,
         tenant_id: uuid.UUID | None = None,
     ) -> None:
         self.session = session
-        self.fornecedor_id = fornecedor_id
+        self.parceiro_id = parceiro_id
         self.usuario_id = usuario_id
         self.tenant_id = tenant_id
 
-    async def _exigir_fornecedor(self) -> None:
+    async def _exigir_parceiro(self) -> None:
         existe = (
-            await self.session.execute(
-                select(Fornecedor.id).where(Fornecedor.id == self.fornecedor_id)
-            )
+            await self.session.execute(select(Parceiro.id).where(Parceiro.id == self.parceiro_id))
         ).first()
         if existe is None:
-            raise NaoEncontrado("Fornecedor", self.fornecedor_id)
+            raise NaoEncontrado("Parceiro", self.parceiro_id)
 
     async def historico(self) -> list[FornecedorEmpresa]:
-        await self._exigir_fornecedor()
+        await self._exigir_parceiro()
         stmt = (
             select(FornecedorEmpresa)
-            .where(FornecedorEmpresa.fornecedor_id == self.fornecedor_id)
+            .where(FornecedorEmpresa.parceiro_id == self.parceiro_id)
             .order_by(FornecedorEmpresa.vigencia_inicio.desc())
         )
         return list((await self.session.execute(stmt)).scalars().all())
@@ -238,43 +307,34 @@ class FornecedorEmpresaService:
     async def empresa_compradora_em(self, data: date) -> uuid.UUID | None:
         """A vigência que cobre `data` — ou `None` se nenhuma cobre.
 
-        Ainda sem chamador: é o que a S5 (compras) vai usar para resolver, num pedido, qual
-        é a empresa compradora vigente do fornecedor naquela data. Fica coberto por teste
-        próprio (`tests/test_fornecedor_empresa.py`) mesmo sem consumidor de produção ainda,
-        porque é a regra de negócio que a aba `Histórico Emp. Comp.` do legado documenta —
-        não é exploração especulativa, é o próximo passo já desenhado.
+        É o que compras vai usar para resolver, num pedido, qual é a empresa compradora
+        vigente do fornecedor naquela data. Fica coberto por teste próprio
+        (`tests/test_fornecedor_empresa.py`) mesmo sem consumidor de produção ainda, porque
+        é a regra que a aba `Histórico Emp. Comp.` do legado documenta.
         """
         stmt = select(FornecedorEmpresa.empresa_compradora_id).where(
-            FornecedorEmpresa.fornecedor_id == self.fornecedor_id,
+            FornecedorEmpresa.parceiro_id == self.parceiro_id,
             FornecedorEmpresa.vigencia_inicio <= data,
             (FornecedorEmpresa.vigencia_fim.is_(None)) | (FornecedorEmpresa.vigencia_fim >= data),
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def abrir_vigencia(self, dados: FornecedorEmpresaAbrir) -> FornecedorEmpresa:
-        await self._exigir_fornecedor()
+        await self._exigir_parceiro()
 
         # `empresa_compradora_id` é FK simples para `tenants` (global, sem RLS): sem esta
         # checagem, qualquer usuário autenticado registra como compradora um UUID que nem
         # é empresa — corrompe o dado de negócio.
         #
         # **Não** é checagem de vínculo do usuário com a compradora — tentativa anterior
-        # (revisão do PR #7, rodada 1) usava `tem_vinculo`, que consulta `employee_company`,
-        # tabela **sob RLS**. Sob o papel de runtime de produção, a política já recorta toda
+        # (revisão do PR #7) usava `tem_vinculo`, que consulta `employee_company`, tabela
+        # **sob RLS**. Sob o papel de runtime de produção, a política já recorta toda
         # consulta para `tenant_id = <empresa ativa>`; pedir vínculo com qualquer *outra*
         # empresa nessa mesma consulta é pedir a interseção de dois valores de `tenant_id`
         # diferentes — sempre vazia, não importa o dado real. O efeito não era "recusar
         # empresa alheia": era recusar **toda** `empresa_compradora_id` diferente da ativa,
-        # inclusive para quem tem vínculo legítimo nas duas (o caso da ANA SILVA) — e a
-        # suíte não pegou porque os testes rodam pela conexão de **dono**, que ignora RLS
-        # (`conftest.py::motor`).
-        #
-        # A invariante certa é mais simples: `empresa_compradora_id` precisa ser uma
-        # `Empresa` ativa do grupo — não precisa ser a empresa do pedido, nem uma que o
-        # usuário tenha vínculo pessoal; é exatamente o que o docstring de
-        # `FornecedorEmpresa` já descreve ("podem, e normalmente vão, ser a mesma empresa —
-        # mas contam histórias diferentes"). `tenants` é global, então esta consulta enxerga
-        # o grupo inteiro em qualquer sessão, RLS ou não.
+        # inclusive para quem tem vínculo legítimo nas duas — e a suíte não pegou porque os
+        # testes rodam pela conexão de **dono**, que ignora RLS (`conftest.py::motor`).
         empresa_existe = (
             await self.session.execute(
                 select(Empresa.id).where(
@@ -292,7 +352,7 @@ class FornecedorEmpresaService:
         aberta = (
             await self.session.execute(
                 select(FornecedorEmpresa).where(
-                    FornecedorEmpresa.fornecedor_id == self.fornecedor_id,
+                    FornecedorEmpresa.parceiro_id == self.parceiro_id,
                     FornecedorEmpresa.vigencia_fim.is_(None),
                 )
             )
@@ -310,13 +370,12 @@ class FornecedorEmpresaService:
         # Duas aberturas simultâneas passam pela checagem acima vendo a mesma `aberta` (ou
         # nenhuma) e as duas tentam inserir uma linha sem `vigencia_fim` — quem chega
         # depois esbarra em `uq_fornecedor_empresa_vigente` (índice único parcial) e recebe
-        # `409 conflito` genérico do handler de `IntegrityError`, não este
-        # `RegraDeNegocio`. Correto e seguro: é o índice que garante a invariante "no
-        # máximo uma vigência aberta", a checagem acima só dá a mensagem específica no
-        # caminho sem corrida.
+        # `409 conflito` genérico do handler de `IntegrityError`, não este `RegraDeNegocio`.
+        # Correto e seguro: é o índice que garante a invariante "no máximo uma vigência
+        # aberta", a checagem acima só dá a mensagem específica no caminho sem corrida.
         nova = FornecedorEmpresa(
             tenant_id=self.tenant_id,
-            fornecedor_id=self.fornecedor_id,
+            parceiro_id=self.parceiro_id,
             empresa_compradora_id=dados.empresa_compradora_id,
             vigencia_inicio=dados.vigencia_inicio,
             motivo=dados.motivo,
@@ -326,32 +385,6 @@ class FornecedorEmpresaService:
         self.session.add(nova)
         await self.session.flush()
         return nova
-
-
-# --- Profissional externo --------------------------------------------------------
-
-_DOMINIOS_PROFISSIONAL_EXTERNO: dict[str, DominioApoio] = {
-    "profissao_id": DominioApoio.profissao,
-}
-
-
-class ProfissionalExternoService(
-    ConfereDominiosMixin,
-    BaseService[ProfissionalExterno, ProfissionalExternoCriar, ProfissionalExternoAtualizar],
-):
-    nome_recurso = "Profissional externo"
-    spec = ListingSpec(
-        model=ProfissionalExterno,
-        campos_busca=("codigo", "nome", "cpf_cnpj"),
-        campo_codigo="codigo",
-        campos_ordenacao=("codigo", "nome", "criado_em"),
-        ordenacao_padrao="codigo",
-        campo_unico="codigo",
-    )
-    dominios_por_campo = _DOMINIOS_PROFISSIONAL_EXTERNO
-
-    def _label_lookup(self, obj: ProfissionalExterno) -> str:
-        return obj.nome
 
 
 # --- Colaborador -----------------------------------------------------------------
@@ -390,8 +423,7 @@ class ColaboradorService(
         # Falha fechado: sem `tenant_id` não há como conferir vínculo nenhum, e um guard de
         # segurança que desaparece em silêncio quando falta contexto é pior que um que
         # nunca existiu — o próximo chamador que esquecer de passar `tenant_id` recebe um
-        # erro alto na hora, não um bypass silencioso. Hoje toda rota real passa os dois
-        # (`crud_router.criar_item_por_empresa` sempre injeta `empresa_id`).
+        # erro alto na hora, não um bypass silencioso.
         if self.tenant_id is None:
             raise RegraDeNegocio(
                 "Não é possível conferir o vínculo do colaborador sem uma empresa ativa.",

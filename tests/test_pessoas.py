@@ -9,11 +9,9 @@ from app.core.tenancy import declarar_empresa
 from app.modules.auth.models import Usuario, VinculoEmpresa
 from app.modules.empresa.models import Empresa
 from app.modules.pessoas.models import (
-    Cliente,
     Colaborador,
-    Fornecedor,
     Obra,
-    ProfissionalExterno,
+    Parceiro,
     Transportadora,
 )
 from tests.cenario import Cenario, criar_usuario_vinculado
@@ -23,7 +21,7 @@ def _cabecalho(cabecalho_admin: dict[str, str], empresa: Empresa) -> dict[str, s
     return {**cabecalho_admin, "X-Empresa-Id": str(empresa.id)}
 
 
-# --- Cliente --------------------------------------------------------------------
+# --- Parceiro --------------------------------------------------------------------
 
 
 async def test_crud_de_cliente(
@@ -32,11 +30,12 @@ async def test_crud_de_cliente(
     cabecalho = _cabecalho(cabecalho_admin, empresa)
 
     criado = await cliente.post(
-        "/api/v1/clientes",
+        "/api/v1/parceiros",
         json={
             "codigo": "CLI001",
-            "nome": "Maria Andrade",
+            "razao_social": "Maria Andrade",
             "tipo_pessoa": "fisica",
+            "e_cliente": True,
             "cpf_cnpj": "123.456.789-00",
             "endereco_logradouro": "Rua das Flores",
             "telefone": "1133334444",
@@ -52,16 +51,16 @@ async def test_crud_de_cliente(
 
     cliente_id = corpo["id"]
     atualizado = await cliente.put(
-        f"/api/v1/clientes/{cliente_id}",
-        json={"nome": "Maria Andrade Silva"},
+        f"/api/v1/parceiros/{cliente_id}",
+        json={"razao_social": "Maria Andrade Silva"},
         headers=cabecalho,
     )
     assert atualizado.status_code == 200
-    assert atualizado.json()["nome"] == "Maria Andrade Silva"
+    assert atualizado.json()["razao_social"] == "Maria Andrade Silva"
     # PUT parcial não apaga o que não veio no corpo.
     assert atualizado.json()["cpf_cnpj"] == "12345678900"
 
-    desativado = await cliente.delete(f"/api/v1/clientes/{cliente_id}", headers=cabecalho)
+    desativado = await cliente.delete(f"/api/v1/parceiros/{cliente_id}", headers=cabecalho)
     assert desativado.status_code == 200
     assert desativado.json()["ativo"] is False
 
@@ -70,9 +69,14 @@ async def test_codigo_de_cliente_e_unico_por_empresa(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
     cabecalho = _cabecalho(cabecalho_admin, empresa)
-    dados = {"codigo": "CLI001", "nome": "Fulano", "tipo_pessoa": "fisica"}
-    await cliente.post("/api/v1/clientes", json=dados, headers=cabecalho)
-    repetido = await cliente.post("/api/v1/clientes", json=dados, headers=cabecalho)
+    dados = {
+        "codigo": "CLI001",
+        "razao_social": "Fulano",
+        "tipo_pessoa": "fisica",
+        "e_cliente": True,
+    }
+    await cliente.post("/api/v1/parceiros", json=dados, headers=cabecalho)
+    repetido = await cliente.post("/api/v1/parceiros", json=dados, headers=cabecalho)
     assert repetido.status_code == 409
     assert repetido.json()["erro"]["campos"] == {"codigo": "já utilizado"}
 
@@ -81,7 +85,7 @@ async def test_cliente_inexistente_da_404(
     cliente: AsyncClient, cabecalho_admin: dict[str, str], empresa: Empresa
 ) -> None:
     resposta = await cliente.get(
-        "/api/v1/clientes/00000000-0000-0000-0000-000000000000",
+        "/api/v1/parceiros/00000000-0000-0000-0000-000000000000",
         headers=_cabecalho(cabecalho_admin, empresa),
     )
     assert resposta.status_code == 404
@@ -93,13 +97,18 @@ async def test_lookup_de_cliente_ignora_acento(
 ) -> None:
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     await cliente.post(
-        "/api/v1/clientes",
-        json={"codigo": "CLI001", "nome": "Cliente São Paulo", "tipo_pessoa": "juridica"},
+        "/api/v1/parceiros",
+        json={
+            "codigo": "CLI001",
+            "razao_social": "Cliente São Paulo",
+            "tipo_pessoa": "juridica",
+            "e_cliente": True,
+        },
         headers=cabecalho,
     )
 
     resposta = await cliente.get(
-        "/api/v1/clientes/lookup", params={"q": "sao paulo"}, headers=cabecalho
+        "/api/v1/parceiros/lookup", params={"q": "sao paulo"}, headers=cabecalho
     )
     assert resposta.status_code == 200
     itens = resposta.json()
@@ -122,11 +131,12 @@ async def test_cliente_profissao_precisa_ser_do_dominio_certo(
     )
 
     valido = await cliente.post(
-        "/api/v1/clientes",
+        "/api/v1/parceiros",
         json={
             "codigo": "CLI001",
-            "nome": "Fulano",
+            "razao_social": "Fulano",
             "tipo_pessoa": "fisica",
+            "e_cliente": True,
             "profissao_id": profissao.json()["id"],
         },
         headers=cabecalho,
@@ -134,10 +144,11 @@ async def test_cliente_profissao_precisa_ser_do_dominio_certo(
     assert valido.status_code == 201, valido.text
 
     invalido = await cliente.post(
-        "/api/v1/clientes",
+        "/api/v1/parceiros",
         json={
             "codigo": "CLI002",
-            "nome": "Beltrano",
+            "razao_social": "Beltrano",
+            "e_cliente": True,
             "tipo_pessoa": "fisica",
             "profissao_id": marca.json()["id"],
         },
@@ -164,11 +175,12 @@ async def test_cliente_de_outra_empresa_nao_aparece_no_recorte(
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
         sessao.add(
-            Cliente(
+            Parceiro(
                 tenant_id=cenario.abacaxi,
                 codigo=codigo_abacaxi,
-                nome="Da Abacaxi",
+                razao_social="Da Abacaxi",
                 tipo_pessoa="fisica",
+                e_cliente=True,
             )
         )
         await sessao.commit()
@@ -176,18 +188,24 @@ async def test_cliente_de_outra_empresa_nao_aparece_no_recorte(
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.uva)
         sessao.add(
-            Cliente(tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva", tipo_pessoa="fisica")
+            Parceiro(
+                tenant_id=cenario.uva,
+                codigo=codigo_uva,
+                razao_social="Da Uva",
+                tipo_pessoa="fisica",
+                e_cliente=True,
+            )
         )
         await sessao.commit()
 
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        clientes = (await sessao.execute(select(Cliente))).scalars().all()
+        clientes = (await sessao.execute(select(Parceiro))).scalars().all()
 
     assert [c.codigo for c in clientes] == [codigo_uva]
 
 
-# --- Obra: subrecurso de cliente --------------------------------------------------
+# --- Obra: subrecurso de parceiro --------------------------------------------------
 
 
 async def test_obra_vive_sob_cliente(
@@ -195,21 +213,26 @@ async def test_obra_vive_sob_cliente(
 ) -> None:
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     criado = await cliente.post(
-        "/api/v1/clientes",
-        json={"codigo": "CLI001", "nome": "Fulano", "tipo_pessoa": "fisica"},
+        "/api/v1/parceiros",
+        json={
+            "codigo": "CLI001",
+            "razao_social": "Fulano",
+            "tipo_pessoa": "fisica",
+            "e_cliente": True,
+        },
         headers=cabecalho,
     )
     cliente_id = criado.json()["id"]
 
     obra = await cliente.post(
-        f"/api/v1/clientes/{cliente_id}/obras",
+        f"/api/v1/parceiros/{cliente_id}/obras",
         json={"nome": "Apto 302", "endereco_logradouro": "Rua Augusta"},
         headers=cabecalho,
     )
     assert obra.status_code == 201, obra.text
-    assert obra.json()["cliente_id"] == cliente_id
+    assert obra.json()["parceiro_id"] == cliente_id
 
-    listagem = await cliente.get(f"/api/v1/clientes/{cliente_id}/obras", headers=cabecalho)
+    listagem = await cliente.get(f"/api/v1/parceiros/{cliente_id}/obras", headers=cabecalho)
     assert listagem.json()["total"] == 1
 
 
@@ -219,11 +242,11 @@ async def test_obra_sob_cliente_inexistente_da_404(
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     bogus = "00000000-0000-0000-0000-000000000000"
 
-    listagem = await cliente.get(f"/api/v1/clientes/{bogus}/obras", headers=cabecalho)
+    listagem = await cliente.get(f"/api/v1/parceiros/{bogus}/obras", headers=cabecalho)
     assert listagem.status_code == 404
 
     criacao = await cliente.post(
-        f"/api/v1/clientes/{bogus}/obras", json={"nome": "Obra fantasma"}, headers=cabecalho
+        f"/api/v1/parceiros/{bogus}/obras", json={"nome": "Obra fantasma"}, headers=cabecalho
     )
     assert criacao.status_code == 404
 
@@ -236,27 +259,37 @@ async def test_obra_de_outro_cliente_nao_aparece_no_recorte(
 
     cliente_a = (
         await cliente.post(
-            "/api/v1/clientes",
-            json={"codigo": "CLI001", "nome": "Cliente A", "tipo_pessoa": "fisica"},
+            "/api/v1/parceiros",
+            json={
+                "codigo": "CLI001",
+                "razao_social": "Cliente A",
+                "tipo_pessoa": "fisica",
+                "e_cliente": True,
+            },
             headers=cabecalho,
         )
     ).json()["id"]
     cliente_b = (
         await cliente.post(
-            "/api/v1/clientes",
-            json={"codigo": "CLI002", "nome": "Cliente B", "tipo_pessoa": "fisica"},
+            "/api/v1/parceiros",
+            json={
+                "codigo": "CLI002",
+                "razao_social": "Cliente B",
+                "tipo_pessoa": "fisica",
+                "e_cliente": True,
+            },
             headers=cabecalho,
         )
     ).json()["id"]
 
     obra = (
         await cliente.post(
-            f"/api/v1/clientes/{cliente_a}/obras", json={"nome": "Obra A"}, headers=cabecalho
+            f"/api/v1/parceiros/{cliente_a}/obras", json={"nome": "Obra A"}, headers=cabecalho
         )
     ).json()
 
     cruzado = await cliente.get(
-        f"/api/v1/clientes/{cliente_b}/obras/{obra['id']}", headers=cabecalho
+        f"/api/v1/parceiros/{cliente_b}/obras/{obra['id']}", headers=cabecalho
     )
     assert cruzado.status_code == 404
 
@@ -271,25 +304,30 @@ async def test_obra_de_outra_empresa_nao_aparece_no_recorte(
 
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
-        cliente_abacaxi = Cliente(
+        cliente_abacaxi = Parceiro(
             tenant_id=cenario.abacaxi,
             codigo=codigo_abacaxi,
-            nome="Da Abacaxi",
+            razao_social="Da Abacaxi",
             tipo_pessoa="fisica",
+            e_cliente=True,
         )
         sessao.add(cliente_abacaxi)
         await sessao.flush()
-        sessao.add(Obra(tenant_id=cenario.abacaxi, cliente_id=cliente_abacaxi.id, nome="Obra A"))
+        sessao.add(Obra(tenant_id=cenario.abacaxi, parceiro_id=cliente_abacaxi.id, nome="Obra A"))
         await sessao.commit()
 
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        cliente_uva = Cliente(
-            tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva", tipo_pessoa="fisica"
+        cliente_uva = Parceiro(
+            tenant_id=cenario.uva,
+            codigo=codigo_uva,
+            razao_social="Da Uva",
+            tipo_pessoa="fisica",
+            e_cliente=True,
         )
         sessao.add(cliente_uva)
         await sessao.flush()
-        sessao.add(Obra(tenant_id=cenario.uva, cliente_id=cliente_uva.id, nome="Obra U"))
+        sessao.add(Obra(tenant_id=cenario.uva, parceiro_id=cliente_uva.id, nome="Obra U"))
         await sessao.commit()
 
     async with AsyncSession(motor_runtime) as sessao:
@@ -299,7 +337,7 @@ async def test_obra_de_outra_empresa_nao_aparece_no_recorte(
     assert [o.nome for o in obras] == ["Obra U"]
 
 
-# --- Fornecedor -------------------------------------------------------------------
+# --- Parceiro: papel de fornecedor -----------------------------------------------
 
 
 async def test_crud_de_fornecedor(
@@ -307,10 +345,12 @@ async def test_crud_de_fornecedor(
 ) -> None:
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     criado = await cliente.post(
-        "/api/v1/fornecedores",
+        "/api/v1/parceiros",
         json={
             "codigo": "FOR001",
             "razao_social": "Lumini Distribuidora Ltda",
+            "tipo_pessoa": "juridica",
+            "e_fornecedor": True,
             "cnpj": "12345678000190",
         },
         headers=cabecalho,
@@ -331,18 +371,32 @@ async def test_fornecedor_de_outra_empresa_nao_aparece_no_recorte(
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
         sessao.add(
-            Fornecedor(tenant_id=cenario.abacaxi, codigo=codigo_abacaxi, razao_social="Da Abacaxi")
+            Parceiro(
+                tenant_id=cenario.abacaxi,
+                codigo=codigo_abacaxi,
+                razao_social="Da Abacaxi",
+                tipo_pessoa="juridica",
+                e_fornecedor=True,
+            )
         )
         await sessao.commit()
 
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        sessao.add(Fornecedor(tenant_id=cenario.uva, codigo=codigo_uva, razao_social="Da Uva"))
+        sessao.add(
+            Parceiro(
+                tenant_id=cenario.uva,
+                codigo=codigo_uva,
+                razao_social="Da Uva",
+                tipo_pessoa="juridica",
+                e_fornecedor=True,
+            )
+        )
         await sessao.commit()
 
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        fornecedores = (await sessao.execute(select(Fornecedor))).scalars().all()
+        fornecedores = (await sessao.execute(select(Parceiro))).scalars().all()
 
     assert [f.codigo for f in fornecedores] == [codigo_uva]
 
@@ -542,7 +596,7 @@ async def test_colaborador_cargo_precisa_ser_do_dominio_certo(
     assert resposta.json()["erro"]["codigo"] == "dominio_invalido"
 
 
-# --- Transportadora e profissional externo: CRUD básico ---------------------------
+# --- Transportadora e parceiro profissional: CRUD básico ---------------------------
 
 
 async def test_crud_de_transportadora(
@@ -588,17 +642,18 @@ async def test_crud_de_profissional_externo(
 ) -> None:
     cabecalho = _cabecalho(cabecalho_admin, empresa)
     criado = await cliente.post(
-        "/api/v1/profissionais-externos",
+        "/api/v1/parceiros",
         json={
             "codigo": "PROF001",
-            "nome": "Arquiteta Ana",
+            "razao_social": "Arquiteta Ana",
+            "e_profissional": True,
             "tipo_pessoa": "fisica",
-            "crea_cau": "CAU12345",
+            "registro_profissional": "CAU12345",
         },
         headers=cabecalho,
     )
     assert criado.status_code == 201, criado.text
-    assert criado.json()["crea_cau"] == "CAU12345"
+    assert criado.json()["registro_profissional"] == "CAU12345"
 
 
 async def test_profissional_externo_de_outra_empresa_nao_aparece_no_recorte(
@@ -610,11 +665,12 @@ async def test_profissional_externo_de_outra_empresa_nao_aparece_no_recorte(
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.abacaxi)
         sessao.add(
-            ProfissionalExterno(
+            Parceiro(
                 tenant_id=cenario.abacaxi,
                 codigo=codigo_abacaxi,
-                nome="Da Abacaxi",
+                razao_social="Da Abacaxi",
                 tipo_pessoa="fisica",
+                e_cliente=True,
             )
         )
         await sessao.commit()
@@ -622,14 +678,18 @@ async def test_profissional_externo_de_outra_empresa_nao_aparece_no_recorte(
     async with AsyncSession(motor_runtime, expire_on_commit=False) as sessao:
         await declarar_empresa(sessao, cenario.uva)
         sessao.add(
-            ProfissionalExterno(
-                tenant_id=cenario.uva, codigo=codigo_uva, nome="Da Uva", tipo_pessoa="fisica"
+            Parceiro(
+                tenant_id=cenario.uva,
+                codigo=codigo_uva,
+                razao_social="Da Uva",
+                tipo_pessoa="fisica",
+                e_cliente=True,
             )
         )
         await sessao.commit()
 
     async with AsyncSession(motor_runtime) as sessao:
         await declarar_empresa(sessao, cenario.uva)
-        profissionais = (await sessao.execute(select(ProfissionalExterno))).scalars().all()
+        profissionais = (await sessao.execute(select(Parceiro))).scalars().all()
 
     assert [p.codigo for p in profissionais] == [codigo_uva]
