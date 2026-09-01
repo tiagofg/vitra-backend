@@ -10,7 +10,7 @@ services:
     # e nenhum dos dois lê este arquivo. Quem quebra é o volume `vitra-db-data` na máquina de
     # quem já tem dado: a imagem 18+ recusa o layout antigo em `/var/lib/postgresql/data` e o
     # container sai com exit 1. Subir de major aqui é migração de dado, não bump de imagem.
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: vitra-db
     environment:
       POSTGRES_USER: vitra
