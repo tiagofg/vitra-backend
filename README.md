@@ -1,5 +1,44 @@
 # VITRA — Backend
 
+A modular business API built with **FastAPI, asynchronous SQLAlchemy, and PostgreSQL**, with company-scoped authorization and database-enforced row-level security.
+
+The implemented modules cover identity and access, companies, reference data, people, and product catalogs. The code emphasizes tenant isolation, explicit API contracts, and integration tests against a real database.
+
+## Engineering highlights
+
+- **Isolation across companies:** PostgreSQL row-level security (RLS), composite keys, and a runtime role with restricted privileges protect company-scoped records.
+- **Transaction-scoped tenant context:** the application uses `set_config(..., true)` so a pooled connection does not retain the previous transaction's tenant.
+- **Authorization before business operations:** authentication, company membership, and resource permissions are checked at the API boundary.
+- **Contract consistency:** a versioned OpenAPI document supports consumers; CI checks that it matches the application.
+- **Real-database testing:** Testcontainers provisions PostgreSQL and applies Alembic migrations before isolation and authorization tests.
+- **Migration reversibility:** CI checks upgrade, downgrade, and a second upgrade, in addition to linting, type checking, and tests.
+
+## Documentation
+
+| Start here | Contents |
+|---|---|
+| [Local setup](docs/setup.md) | Prerequisites, environment, database roles, migration and test commands |
+| [Architecture](docs/architecture.md) | Module boundaries, tenant isolation, authorization, contracts and trade-offs |
+| [API guide](docs/api.md) | Authentication, active company, pagination, error responses and Postman |
+| [OpenAPI contract](openapi.json) | Machine-readable API definition |
+| [Integration tests](tests/) | Authorization, isolation, concurrency and domain behavior |
+| [CI workflow](.github/workflows/ci.yml) | Quality, tests, migration and contract jobs |
+
+## Stack and current scope
+
+Python 3.12+, FastAPI, SQLAlchemy 2 async, asyncpg, PostgreSQL 17, Alembic, Pydantic, PyJWT and Argon2. Development tooling includes pytest, Testcontainers, Ruff, mypy, pre-commit and GitHub Actions. Dependency constraints are in [pyproject.toml](pyproject.toml).
+
+This is a **modular monolith**: the domain modules share an application and database. The repository does not establish production deployment status, throughput guarantees, or a microservices deployment.
+
+The audit module currently provides an append-only table and an explicit event-recording helper. It does **not** automatically audit every application mutation. See [the implementation and its scope](app/core/audit.py).
+
+## Existing operational guide (Portuguese)
+
+The original operational instructions are retained below. The English guides above provide an additional entry point into the implemented system.
+
+---
+
+
 Substituto do SoftLux 1.0.2.1521 para a Vertz. Python 3.12 + FastAPI + SQLAlchemy 2.0 async
 sobre PostgreSQL 17. O plano completo está em [`plano-backend-vitra.md`](plano-backend-vitra.md);
 as anotações de medição do bake-off, em [`notas-bakeoff.md`](notas-bakeoff.md).
@@ -565,3 +604,4 @@ ou superusuário faz todos passarem sem provar nada.
 Precisa de Docker. Para iterar sem subir container a cada rodada, aponte
 `VITRA_TESTE_URL_EXTERNA` para um Postgres já de pé — o schema continua sendo recriado a
 partir das migrações.
+
