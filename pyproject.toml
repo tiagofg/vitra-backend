@@ -32,8 +32,8 @@ dev = [
     # versões diferentes, "passou aqui" deixa de significar "passa lá" — e o CI vira um
     # oráculo que reprova código que o hook local acabou de aprovar.
     # Ao subir, suba junto o `rev` de `.pre-commit-config.yaml`.
-    "ruff==0.16.1",
-    "mypy==2.3.0",
+    "ruff==0.16.7",
+    "mypy==2.3.1",
     "pre-commit>=4.6",
     # Postgres descartável por execução. Container fixo não serve mais: cada suíte precisa
     # recriar o RLS do zero, e política de segurança que sobra de uma execução para a outra
